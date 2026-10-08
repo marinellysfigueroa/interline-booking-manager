@@ -1,0 +1,12 @@
+# Configuración del linter del contrato: npx @redocly/cli lint api/openapi.yaml
+extends:
+  - recommended
+rules:
+  # Todas las operaciones deben estar documentadas con ejemplos y errores.
+  operation-description: error
+  operation-4xx-response: error
+  no-invalid-media-type-examples: error
+  no-invalid-parameter-examples: error
+  no-invalid-schema-examples: error
+  # Proyecto de portafolio sin licencia publicada todavía.
+  info-license: off
