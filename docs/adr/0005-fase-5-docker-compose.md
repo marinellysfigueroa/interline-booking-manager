@@ -59,8 +59,8 @@ de Artifact Registry.
   del proceso.
 - **Nativo "casi estático":** `-H:+StaticExecutableWithDynamicLibC` enlaza todo salvo
   glibc, así que el ejecutable corre sobre `distroless/base` sin añadir bibliotecas.
-  `NativeReflectionConfig` registra para reflexión los records del dominio que Jackson
-  serializa a JSONB (los DTO de REST y REST Client los registra Quarkus solo).
+  `PersistenceNativeReflectionConfig` registra para reflexión los records del dominio que
+  Jackson serializa a JSONB, y los DTO del contrato se registran como se explica en D8.
 
 ### D4. JVM en contenedor
 
@@ -156,7 +156,8 @@ con la etapa runtime exacta de `Dockerfile.native`.
   `contact`…). La e2e no lo detectaba porque no comprueba esos campos.
   - **Corrección:** openapi-generator anota cada DTO con `@RegisterForReflection`
     (`additionalModelTypeAnnotations`). Los enums generados, que el generador no anota,
-    se registran en `NativeReflectionConfig`.
+    se registran en `RestNativeReflectionConfig`, dentro del adaptador REST, para respetar
+    la regla de ArchUnit de que los DTO no salen de ese paquete.
   - **Prevención:** `NativeReflectionCoverageTest` (JVM, milisegundos) falla si algún DTO
     del contrato queda sin registrar.
 - `-H:+StaticExecutableWithDynamicLibC` es experimental en GraalVM 25, así que se

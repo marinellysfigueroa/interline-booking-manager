@@ -2,7 +2,7 @@ package com.insightdevelop.interline.architecture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.insightdevelop.interline.infrastructure.NativeReflectionConfig;
+import com.insightdevelop.interline.infrastructure.rest.RestNativeReflectionConfig;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import io.quarkus.runtime.annotations.RegisterForReflection;
@@ -22,7 +22,7 @@ class NativeReflectionCoverageTest {
 
     @Test
     void every_generated_rest_dto_is_registered_for_reflection() {
-        Set<String> explicitTargets = Arrays.stream(NativeReflectionConfig.class
+        Set<String> explicitTargets = Arrays.stream(RestNativeReflectionConfig.class
                         .getAnnotation(RegisterForReflection.class).targets())
                 .map(Class::getName)
                 .collect(Collectors.toSet());
