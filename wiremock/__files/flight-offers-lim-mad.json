@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "count": 1
+  },
+  "data": [
+    {
+      "type": "flight-offer",
+      "id": "1",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT16H55M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "LIM",
+                "at": "{{request.query.departureDate}}T11:00:00"
+              },
+              "arrival": {
+                "iataCode": "BOG",
+                "at": "{{request.query.departureDate}}T14:10:00"
+              },
+              "carrierCode": "LA",
+              "number": "2486",
+              "operating": {
+                "carrierCode": "LA"
+              },
+              "duration": "PT3H10M",
+              "id": "1",
+              "numberOfStops": 0
+            },
+            {
+              "departure": {
+                "iataCode": "BOG",
+                "at": "{{request.query.departureDate}}T19:05:00"
+              },
+              "arrival": {
+                "iataCode": "MAD",
+                "at": "{{date (parseDate request.query.departureDate format='yyyy-MM-dd') offset='1 days' format='yyyy-MM-dd'}}T11:40:00"
+              },
+              "carrierCode": "AV",
+              "number": "26",
+              "operating": {
+                "carrierCode": "AV"
+              },
+              "duration": "PT10H35M",
+              "id": "2",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 1210.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 121.00 '*' request.query.infants)}}",
+        "base": "{{math (math 1210.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 121.00 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 1210.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 121.00 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "LA"
+      ],
+      "travelerPricings": []
+    }
+  ]
+}

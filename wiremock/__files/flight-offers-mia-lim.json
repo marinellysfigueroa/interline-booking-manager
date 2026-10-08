@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "count": 1
+  },
+  "data": [
+    {
+      "type": "flight-offer",
+      "id": "1",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT5H40M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "MIA",
+                "at": "{{request.query.departureDate}}T17:00:00"
+              },
+              "arrival": {
+                "iataCode": "LIM",
+                "at": "{{request.query.departureDate}}T22:40:00"
+              },
+              "carrierCode": "LA",
+              "number": "2471",
+              "operating": {
+                "carrierCode": "LA"
+              },
+              "duration": "PT5H40M",
+              "id": "1",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 560.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 56.00 '*' request.query.infants)}}",
+        "base": "{{math (math 560.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 56.00 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 560.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 56.00 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "LA"
+      ],
+      "travelerPricings": []
+    }
+  ]
+}

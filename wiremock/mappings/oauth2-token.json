@@ -1,0 +1,41 @@
+{
+  "name": "OAuth2 client credentials",
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "url": "/v1/security/oauth2/token",
+    "headers": {
+      "Content-Type": {
+        "contains": "application/x-www-form-urlencoded"
+      }
+    },
+    "bodyPatterns": [
+      {
+        "contains": "grant_type=client_credentials"
+      },
+      {
+        "contains": "client_id=interline-dev"
+      },
+      {
+        "contains": "client_secret=interline-dev-secret"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "type": "amadeusOAuth2Token",
+      "username": "dev@interline.example.com",
+      "application_name": "interline-booking-manager",
+      "client_id": "interline-dev",
+      "token_type": "Bearer",
+      "access_token": "wiremock-access-token",
+      "expires_in": 1799,
+      "state": "approved",
+      "scope": ""
+    }
+  }
+}

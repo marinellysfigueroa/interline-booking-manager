@@ -1,0 +1,40 @@
+{
+  "name": "Flight offers BOG-MAD ida y vuelta",
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v2/shopping/flight-offers",
+    "headers": {
+      "Authorization": {
+        "equalTo": "Bearer wiremock-access-token"
+      }
+    },
+    "queryParameters": {
+      "originLocationCode": {
+        "equalTo": "BOG"
+      },
+      "destinationLocationCode": {
+        "equalTo": "MAD"
+      },
+      "adults": {
+        "matches": "[1-9]"
+      },
+      "currencyCode": {
+        "matches": "[A-Z]{3}"
+      },
+      "returnDate": {
+        "matches": "\\d{4}-\\d{2}-\\d{2}"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/vnd.amadeus+json"
+    },
+    "bodyFileName": "flight-offers-bog-mad-roundtrip.json",
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

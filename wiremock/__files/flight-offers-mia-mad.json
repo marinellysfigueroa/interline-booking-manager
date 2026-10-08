@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "count": 1
+  },
+  "data": [
+    {
+      "type": "flight-offer",
+      "id": "1",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT8H10M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "MIA",
+                "at": "{{request.query.departureDate}}T18:30:00"
+              },
+              "arrival": {
+                "iataCode": "MAD",
+                "at": "{{date (parseDate request.query.departureDate format='yyyy-MM-dd') offset='1 days' format='yyyy-MM-dd'}}T08:40:00"
+              },
+              "carrierCode": "IB",
+              "number": "6124",
+              "operating": {
+                "carrierCode": "IB"
+              },
+              "duration": "PT8H10M",
+              "id": "1",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 760.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 76.00 '*' request.query.infants)}}",
+        "base": "{{math (math 760.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 76.00 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 760.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 76.00 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "IB"
+      ],
+      "travelerPricings": []
+    }
+  ]
+}

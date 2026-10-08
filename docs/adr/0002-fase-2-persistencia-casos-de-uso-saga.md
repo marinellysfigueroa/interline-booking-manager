@@ -1,6 +1,6 @@
 # ADR 0002 — Fase 2: persistencia, casos de uso, saga e idempotencia
 
-- **Estado:** propuesto (pendiente de revisión)
+- **Estado:** aceptado
 - **Fecha:** 2026-10-08
 
 ## Contexto

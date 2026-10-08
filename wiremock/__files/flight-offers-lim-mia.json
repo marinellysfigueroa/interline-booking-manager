@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "count": 2
+  },
+  "data": [
+    {
+      "type": "flight-offer",
+      "id": "1",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT5H50M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "LIM",
+                "at": "{{request.query.departureDate}}T09:10:00"
+              },
+              "arrival": {
+                "iataCode": "MIA",
+                "at": "{{request.query.departureDate}}T15:00:00"
+              },
+              "carrierCode": "LA",
+              "number": "2470",
+              "operating": {
+                "carrierCode": "LA"
+              },
+              "duration": "PT5H50M",
+              "id": "1",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 540.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 54.00 '*' request.query.infants)}}",
+        "base": "{{math (math 540.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 54.00 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 540.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 54.00 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "LA"
+      ],
+      "travelerPricings": []
+    },
+    {
+      "type": "flight-offer",
+      "id": "2",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT6H30M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "LIM",
+                "at": "{{request.query.departureDate}}T23:40:00"
+              },
+              "arrival": {
+                "iataCode": "MIA",
+                "at": "{{date (parseDate request.query.departureDate format='yyyy-MM-dd') offset='1 days' format='yyyy-MM-dd'}}T06:10:00"
+              },
+              "carrierCode": "AA",
+              "number": "918",
+              "operating": {
+                "carrierCode": "AA"
+              },
+              "duration": "PT6H30M",
+              "id": "2",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 515.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 51.50 '*' request.query.infants)}}",
+        "base": "{{math (math 515.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 51.50 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 515.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 51.50 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "AA"
+      ],
+      "travelerPricings": []
+    }
+  ]
+}

@@ -19,6 +19,7 @@
         <openapi-generator.version>7.26.0</openapi-generator.version>
         <assertj.version>3.27.7</assertj.version>
         <archunit.version>1.4.2</archunit.version>
+        <quarkus-wiremock.version>1.8.1</quarkus-wiremock.version>
         <!-- Contrato OpenAPI (fuente única de verdad, compartido con el frontend) -->
         <openapi.contract>${project.basedir}/../api/openapi.yaml</openapi.contract>
     </properties>
@@ -84,6 +85,16 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>
+        <!--
+          Dev Service de WireMock: en dev y test arranca WireMock con los stubs de /wiremock
+          (el contrato estilo Amadeus). No se empaqueta en el artefacto (scope provided).
+        -->
+        <dependency>
+            <groupId>io.quarkiverse.wiremock</groupId>
+            <artifactId>quarkus-wiremock</artifactId>
+            <version>${quarkus-wiremock.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <!-- OIDC preparado (desactivado en dev/test); equivale a spring-boot-starter-oauth2-resource-server -->
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -103,6 +114,13 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit-mockito</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- @ConnectWireMock: cliente WireMock inyectado en las pruebas para stubs de fallos -->
+        <dependency>
+            <groupId>io.quarkiverse.wiremock</groupId>
+            <artifactId>quarkus-wiremock-test</artifactId>
+            <version>${quarkus-wiremock.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
