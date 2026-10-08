@@ -22,6 +22,9 @@ public interface BookingRepository {
 
     boolean existsByLocator(BookingLocator locator);
 
+    /** Solo el estado, sin cargar el agregado (para enriquecer respuestas de error). */
+    Optional<BookingStatus> findStatus(BookingLocator locator);
+
     /** Inserta o actualiza el agregado completo (con control de concurrencia optimista). */
     void save(Booking booking);
 

@@ -43,6 +43,11 @@ public final class PassengerManifest {
         return manifest;
     }
 
+    /** Reconstrucción desde persistencia: los datos ya se validaron al crear la reserva. */
+    static PassengerManifest restore(List<Passenger> passengers) {
+        return new PassengerManifest(passengers);
+    }
+
     public List<Passenger> all() {
         return passengers;
     }

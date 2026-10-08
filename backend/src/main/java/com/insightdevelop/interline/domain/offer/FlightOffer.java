@@ -2,6 +2,7 @@ package com.insightdevelop.interline.domain.offer;
 
 import com.insightdevelop.interline.domain.airline.AirlineCode;
 import com.insightdevelop.interline.domain.booking.Fare;
+import com.insightdevelop.interline.domain.booking.PassengerCounts;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -12,18 +13,23 @@ import java.util.stream.Collectors;
 /**
  * Oferta normalizada devuelta por un {@code FlightOffersProvider}, independiente del
  * formato del proveedor (estilo Amadeus u otro).
+ *
+ * @param passengers composición para la que se tarificó la oferta: la reserva debe
+ *                   tener exactamente esos pasajeros para respetar el precio
  */
 public record FlightOffer(
         String offerId,
         AirlineCode validatingCarrier,
         List<Itinerary> itineraries,
         Fare fare,
+        PassengerCounts passengers,
         Instant expiresAt) {
 
     public FlightOffer {
         Objects.requireNonNull(offerId, "offerId");
         Objects.requireNonNull(validatingCarrier, "validatingCarrier");
         Objects.requireNonNull(fare, "fare");
+        Objects.requireNonNull(passengers, "passengers");
         Objects.requireNonNull(expiresAt, "expiresAt");
         itineraries = List.copyOf(itineraries);
         if (itineraries.isEmpty() || itineraries.size() > 2) {

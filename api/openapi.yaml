@@ -286,7 +286,44 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
         '422':
-          $ref: '#/components/responses/UnprocessableEntity'
+          description: |
+            Regla de negocio incumplida. Si la reserva llegó a crearse y se
+            compensó (una operadora rechazó un segmento), el problema incluye
+            `locator` y `bookingStatus: FAILED`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                infantRule:
+                  summary: Infante sin adulto
+                  value:
+                    type: https://interline.example.com/problems/infant-rule-violation
+                    title: Regla de infantes
+                    status: 422
+                    detail: El adulto Luis Gómez ya lleva un infante; cada adulto puede llevar solo uno.
+                    code: INFANT_RULE_VIOLATION
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+                passengerMismatch:
+                  summary: Pasajeros distintos de los de la oferta
+                  value:
+                    type: https://interline.example.com/problems/passenger-mismatch
+                    title: Pasajeros distintos de la oferta
+                    status: 422
+                    detail: La oferta se tarificó para 2 ADT y 1 INF y la reserva trae 1 ADT.
+                    code: PASSENGER_MISMATCH
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+                segmentRejected:
+                  summary: Una operadora rechazó un segmento (reserva compensada)
+                  value:
+                    type: https://interline.example.com/problems/segment-rejected
+                    title: Segmento rechazado
+                    status: 422
+                    detail: La operadora rechazó el segmento IB3234 MAD-FCO
+                    code: SEGMENT_REJECTED
+                    locator: K7Q2MX
+                    bookingStatus: FAILED
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
     get:
       tags: [Bookings]
       operationId: listBookings
@@ -538,6 +575,7 @@ paths:
                     status: 422
                     detail: El segmento IB3234 MAD-FCO siguió en UC tras 3 intentos; la reserva se compensó.
                     code: SEGMENT_NOT_CONFIRMED
+                    locator: K7Q2MX
                     bookingStatus: FAILED
                     correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
 
@@ -684,6 +722,15 @@ components:
                 detail: No se puede pasar de TICKETED a CANCELLED.
                 code: INVALID_STATE_TRANSITION
                 bookingStatus: TICKETED
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+            concurrentModification:
+              summary: Otra petición modificó la reserva a la vez
+              value:
+                type: https://interline.example.com/problems/concurrent-modification
+                title: Modificación concurrente
+                status: 409
+                detail: La reserva fue modificada por otra petición; vuelve a consultarla.
+                code: CONCURRENT_MODIFICATION
                 correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
             idempotencyInProgress:
               summary: Petición idempotente en curso
@@ -1308,6 +1355,8 @@ components:
           description: Identificador de correlación de la petición (extensión).
         bookingStatus:
           $ref: '#/components/schemas/BookingStatus'
+        locator:
+          $ref: '#/components/schemas/BookingLocator'
         errors:
           type: array
           description: Errores por campo (solo en 400 de validación).

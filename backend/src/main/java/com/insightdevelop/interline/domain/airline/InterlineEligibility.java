@@ -2,6 +2,8 @@ package com.insightdevelop.interline.domain.airline;
 
 import com.insightdevelop.interline.domain.shared.BusinessRuleViolationException;
 import com.insightdevelop.interline.domain.shared.DomainErrorCode;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -14,8 +16,9 @@ public record InterlineEligibility(
 
     public InterlineEligibility {
         Objects.requireNonNull(validatingCarrier, "validatingCarrier");
-        operatingCarriers = Set.copyOf(operatingCarriers);
-        missingAgreements = Set.copyOf(missingAgreements);
+        // conjuntos inmutables que conservan el orden de vuelo
+        operatingCarriers = Collections.unmodifiableSet(new LinkedHashSet<>(operatingCarriers));
+        missingAgreements = Collections.unmodifiableSet(new LinkedHashSet<>(missingAgreements));
     }
 
     public boolean singleTicketEligible() {

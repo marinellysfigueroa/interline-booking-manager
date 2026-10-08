@@ -84,9 +84,30 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>
+        <!-- OIDC preparado (desactivado en dev/test); equivale a spring-boot-starter-oauth2-resource-server -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-oidc</artifactId>
+        </dependency>
+        <!-- Logs JSON en prod (equivale a logstash-logback-encoder) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-logging-json</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- @InjectMock: equivale a @MockBean / @MockitoBean de Spring -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit-mockito</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -144,6 +165,7 @@
                             <generatorName>jaxrs-spec</generatorName>
                             <apiPackage>com.insightdevelop.interline.infrastructure.rest.api</apiPackage>
                             <modelPackage>com.insightdevelop.interline.infrastructure.rest.dto</modelPackage>
+                            <modelNameSuffix>Dto</modelNameSuffix>
                             <generateSupportingFiles>false</generateSupportingFiles>
                             <generateApiTests>false</generateApiTests>
                             <generateModelTests>false</generateModelTests>

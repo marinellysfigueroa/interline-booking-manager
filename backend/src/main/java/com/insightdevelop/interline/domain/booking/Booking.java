@@ -92,6 +92,25 @@ public final class Booking {
         return booking;
     }
 
+    /**
+     * Reconstrucción desde persistencia. No aplica reglas de creación (las reglas se
+     * validaron cuando se creó la reserva y las edades no se re-evalúan con el tiempo).
+     */
+    public static Booking restore(BookingLocator locator, AirlineCode validatingCarrier, String offerId,
+            Contact contact, BookingStatus status, Fare fare, List<Passenger> passengers, List<Segment> segments,
+            List<Payment> payments, List<Ticket> tickets, List<StatusChange> statusHistory, Instant createdAt,
+            Instant updatedAt) {
+        var booking = new Booking(locator, validatingCarrier, offerId, contact,
+                PassengerManifest.restore(passengers), segments, createdAt);
+        booking.status = Objects.requireNonNull(status, "status");
+        booking.fare = fare;
+        booking.payments.addAll(payments);
+        booking.tickets.addAll(tickets);
+        booking.statusHistory.addAll(statusHistory);
+        booking.updatedAt = Objects.requireNonNull(updatedAt, "updatedAt");
+        return booking;
+    }
+
     // ------------------------------------------------------------------ flujo feliz
 
     /** {@code DRAFT → PRICED}: fija la tarifa confirmada con la oferta. */
@@ -332,6 +351,10 @@ public final class Booking {
 
     public List<Passenger> passengers() {
         return passengers.all();
+    }
+
+    public PassengerCounts passengerCounts() {
+        return passengers.counts();
     }
 
     public List<Segment> segments() {

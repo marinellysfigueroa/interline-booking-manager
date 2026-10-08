@@ -29,7 +29,7 @@ class FlightOfferTest {
     void exposes_operating_carriers_in_flight_order() {
         var offer = new FlightOffer("OF-1", AirlineCode.of("AV"),
                 List.of(new Itinerary(ItineraryDirection.OUTBOUND, Duration.ofMinutes(850), List.of(BOG_MAD, MAD_FCO))),
-                new Fare(Money.of("1849.60", "USD"), Miles.of(184_960)), Instant.parse("2026-11-01T15:30:00Z"));
+                new Fare(Money.of("1849.60", "USD"), Miles.of(184_960)), new PassengerCounts(1, 0, 0), Instant.parse("2026-11-01T15:30:00Z"));
 
         assertThat(offer.operatingCarriers()).extracting(AirlineCode::value).containsExactly("AV", "IB");
         assertThat(offer.isExpiredAt(Instant.parse("2026-11-01T15:30:00Z"))).isTrue();

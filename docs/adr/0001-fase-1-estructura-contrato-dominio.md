@@ -1,6 +1,6 @@
 # ADR 0001 — Fase 1: estructura del monorepo, contrato OpenAPI y modelo de dominio
 
-- **Estado:** propuesto (pendiente de revisión)
+- **Estado:** aceptado
 - **Fecha:** 2026-10-08
 
 ## Contexto

@@ -33,8 +33,18 @@ class HexagonalArchitectureTest {
     @ArchTest
     static final ArchRule application_does_not_depend_on_infrastructure = noClasses()
             .that().resideInAPackage(BASE + ".application..")
-            .should().dependOnClassesThat().resideInAPackage(BASE + ".infrastructure..")
-            .allowEmptyShould(true); // la capa de aplicación se implementa en la fase 2
+            .should().dependOnClassesThat().resideInAPackage(BASE + ".infrastructure..");
+
+    @ArchTest
+    static final ArchRule rest_dtos_stay_in_the_rest_adapter = noClasses()
+            .that().resideOutsideOfPackage(BASE + ".infrastructure.rest..")
+            .should().dependOnClassesThat().resideInAPackage(BASE + ".infrastructure.rest.dto..")
+            .because("los DTO generados del contrato solo existen en el borde HTTP");
+
+    @ArchTest
+    static final ArchRule persistence_entities_stay_in_the_persistence_adapter = noClasses()
+            .that().resideOutsideOfPackage(BASE + ".infrastructure..")
+            .should().dependOnClassesThat().resideInAPackage(BASE + ".infrastructure.persistence.entity..");
 
     @ArchTest
     static final ArchRule domain_packages_are_free_of_cycles = slices()
