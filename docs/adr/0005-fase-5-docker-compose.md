@@ -130,7 +130,37 @@ entorno, que sale por un proxy con CA propia.
   - logs JSON en UTF-8.
 - **E2E de Playwright contra el stack de compose** (`E2E_BASE_URL=http://localhost:4200
   npm run e2e`): 3/3. Esto valida también que la CSP no rompe la aplicación.
-- **Nativo:** ver la sección siguiente.
+- **Nativo**: ver D8.
+
+### D8. Ejecutable nativo: verificación y un fallo que solo aparecía en nativo
+
+El builder de Mandrel (quay.io) no es accesible desde el entorno en el que se desarrolló el
+proyecto. Por eso el ejecutable se compiló con **Oracle GraalVM 25.0.4**, la misma base
+JDK 25 que el Mandrel `jdk-25`, descargado con verificación SHA-256. Después se empaquetó
+con la etapa runtime exacta de `Dockerfile.native`.
+
+| | JVM (distroless java21) | Nativo (distroless base) |
+| --- | --- | --- |
+| Imagen | 388 MB | 217 MB |
+| Arranque | ≈ 6 s | **0,196 s** (Quarkus) / 0,5 s hasta readiness |
+| Memoria en reposo / tras la e2e | — | 15 MiB / 39 MiB (límite 256 MiB) |
+| Compilación | ≈ 2,5 min | ≈ 10,5 min, pico de 5,7 GB de RAM |
+
+- `ldd` confirma el enlace casi estático: el ejecutable solo depende de `libc`.
+- La e2e de Playwright pasa 3/3 contra el backend nativo, sin ningún WARN ni ERROR en
+  sus logs.
+- **Hallazgo:** en nativo los Problem Details salían **sin `code` ni `detail`**. Los
+  recursos devuelven `Response`, así que Quarkus no sabe qué DTO se serializa y no los
+  registra para reflexión. Jackson solo veía las propiedades del constructor
+  `@JsonCreator` y perdía las asignadas con métodos fluidos (`code`, `detail`, `fare`,
+  `contact`…). La e2e no lo detectaba porque no comprueba esos campos.
+  - **Corrección:** openapi-generator anota cada DTO con `@RegisterForReflection`
+    (`additionalModelTypeAnnotations`). Los enums generados, que el generador no anota,
+    se registran en `NativeReflectionConfig`.
+  - **Prevención:** `NativeReflectionCoverageTest` (JVM, milisegundos) falla si algún DTO
+    del contrato queda sin registrar.
+- `-H:+StaticExecutableWithDynamicLibC` es experimental en GraalVM 25, así que se
+  envuelve con `-H:+UnlockExperimentalVMOptions` / `-H:-UnlockExperimentalVMOptions`.
 
 ## Consecuencias
 

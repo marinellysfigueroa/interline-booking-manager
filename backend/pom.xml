@@ -201,6 +201,11 @@
                                 <openApiNullable>false</openApiNullable>
                                 <sourceFolder>src/gen/java</sourceFolder>
                                 <hideGenerationTimestamp>true</hideGenerationTimestamp>
+                                <!--
+                                  Los recursos devuelven Response, así que Quarkus no puede deducir qué DTO
+                                  registrar para reflexión en nativo: se anotan todos al generarlos.
+                                -->
+                                <additionalModelTypeAnnotations>@io.quarkus.runtime.annotations.RegisterForReflection</additionalModelTypeAnnotations>
                             </configOptions>
                         </configuration>
                     </execution>
