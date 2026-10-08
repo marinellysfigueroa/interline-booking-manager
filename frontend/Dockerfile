@@ -11,7 +11,7 @@
 # otro archivo, sin reconstruir la imagen.
 # =============================================================================
 ARG BUILD_IMAGE=mirror.gcr.io/library/node:24.15.0-alpine
-ARG RUNTIME_IMAGE=mirror.gcr.io/nginxinc/nginx-unprivileged:1.29-alpine
+ARG RUNTIME_IMAGE=mirror.gcr.io/nginxinc/nginx-unprivileged:1.30-alpine
 
 # ---------------------------------------------------------------- build
 FROM ${BUILD_IMAGE} AS build

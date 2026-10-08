@@ -38,7 +38,8 @@ COPY api/openapi.yaml /workspace/api/openapi.yaml
 COPY backend/src/main/ src/main/
 RUN --mount=type=cache,target=/root/.m2 \
     --mount=type=secret,id=maven-settings,required=false \
-    mvn -B -q $( [ -s /run/secrets/maven-settings ] && echo "-s /run/secrets/maven-settings" ) package -DskipTests
+    set --; if [ -s /run/secrets/maven-settings ]; then set -- -s /run/secrets/maven-settings; fi; \
+    mvn -B -q "$@" package -DskipTests
 
 # ---------------------------------------------------------------- runtime
 # Distroless: sin shell ni gestor de paquetes; usuario nonroot (UID 65532) por defecto.

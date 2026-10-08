@@ -1,6 +1,6 @@
 # ADR 0005 — Fase 5: imágenes Docker y docker-compose
 
-- **Estado:** propuesto (pendiente de revisión)
+- **Estado:** aceptado
 - **Fecha:** 2026-10-08
 
 ## Contexto

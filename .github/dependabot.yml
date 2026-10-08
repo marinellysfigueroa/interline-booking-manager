@@ -1,0 +1,22 @@
+# Actualizaciones semanales de dependencias, acciones, imágenes base y providers.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: maven
+    directory: /backend
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly }
+    groups:
+      angular: { patterns: ["@angular/*", "@angular-devkit/*"] }
+  - package-ecosystem: docker
+    directories: [/backend, /frontend, /wiremock]
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directories: [/infra/terraform/bootstrap, /infra/terraform/app]
+    schedule: { interval: weekly }

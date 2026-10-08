@@ -20,6 +20,8 @@ FROM ${MAVEN_IMAGE} AS maven
 
 # ---------------------------------------------------------------- build
 FROM ${BUILD_IMAGE} AS build
+# La etapa de build necesita root (CA del sistema, caché de Maven); no se distribuye.
+# hadolint ignore=DL3002
 USER root
 COPY --from=maven /usr/share/maven /opt/maven
 ENV PATH=/opt/maven/bin:$PATH
@@ -38,7 +40,8 @@ COPY api/openapi.yaml /workspace/api/openapi.yaml
 COPY backend/src/main/ src/main/
 RUN --mount=type=cache,target=/root/.m2 \
     --mount=type=secret,id=maven-settings,required=false \
-    mvn -B $( [ -s /run/secrets/maven-settings ] && echo "-s /run/secrets/maven-settings" ) package -Dnative -DskipTests
+    set --; if [ -s /run/secrets/maven-settings ]; then set -- -s /run/secrets/maven-settings; fi; \
+    mvn -B "$@" package -Dnative -DskipTests
 
 # ---------------------------------------------------------------- runtime
 FROM ${RUNTIME_IMAGE}

@@ -1,0 +1,11 @@
+project_id               = "my-gcp-project"
+region                   = "us-central1"
+environment              = "prod"
+deployer_service_account = "gh-deployer@my-gcp-project.iam.gserviceaccount.com"
+
+# Demo económica; en producción real: db-custom-2-7680 y REGIONAL
+db_tier              = "db-f1-micro"
+db_availability_type = "ZONAL"
+
+flight_offers_provider  = "amadeus-style"
+deploy_provider_sandbox = true

@@ -11,6 +11,9 @@ credentials*.json
 *.tfstate
 *.tfstate.*
 *.tfplan
+# Valores locales de cada entorno (se versionan solo los *.example)
+terraform.tfvars
+backend.hcl
 crash.log
 
 # IDE / SO

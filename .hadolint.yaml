@@ -1,0 +1,4 @@
+# hadolint: los Dockerfiles usan `FROM ${ARG}` con la etiqueta fijada en el valor por defecto
+# del ARG (p. ej. node:24.15.0-alpine). hadolint no resuelve ARG y lo marca como DL3006.
+ignored:
+  - DL3006
