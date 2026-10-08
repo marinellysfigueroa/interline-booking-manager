@@ -5,8 +5,7 @@ Gestión de reservas con itinerarios de varias aerolíneas emitidos en un solo t
 
 Quarkus 3.40 LTS (Java 21) + Angular + PostgreSQL, desplegable en GCP (Cloud Run).
 
-> 🚧 En construcción por fases. Fase actual: **3 — proveedor de vuelos estilo Amadeus,
-> WireMock y resiliencia**. Al terminar se completará este README con la arquitectura, el
+> 🚧 En construcción por fases. Fase actual: **4 — frontend Angular**. Al terminar se completará este README con la arquitectura, el
 > despliegue y la sección "Quarkus para desarrolladores Spring".
 
 ## Estructura
@@ -21,7 +20,7 @@ docs/adr/     Architecture Decision Records
 
 ## Comandos
 
-Requisitos: Java 21 y Docker. En dev y test, Dev Services levanta automáticamente
+Requisitos: Java 21, Node 24.15 (`frontend/.nvmrc`) y Docker. En dev y test, Dev Services levanta automáticamente
 PostgreSQL y WireMock (con los stubs de `/wiremock` como proveedor de vuelos).
 
 ```bash
@@ -34,6 +33,14 @@ cd backend && ./mvnw test
 # Modo desarrollo con recarga en caliente (PostgreSQL en Docker automático)
 cd backend && ./mvnw quarkus:dev
 # → http://localhost:8080/swagger-ui · /q/health · /q/metrics · Dev UI en /q/dev-ui
+```
+
+Frontend (con el backend corriendo en :8080):
+
+```bash
+cd frontend && npm ci && npm start          # http://localhost:4200 (?tenant=LA para el otro tema)
+npm run test:ci                              # pruebas unitarias (Vitest)
+npm run e2e                                  # Playwright: levanta backend y frontend si no están arriba
 ```
 
 Flujo de ejemplo con `curl` (ofertas desde WireMock; inventario, pagos y millas simulados):
@@ -67,3 +74,4 @@ Para ver la compensación de la saga en local:
 - [ADR 0001 — Estructura, contrato OpenAPI y modelo de dominio](docs/adr/0001-fase-1-estructura-contrato-dominio.md)
 - [ADR 0002 — Persistencia, casos de uso, saga e idempotencia](docs/adr/0002-fase-2-persistencia-casos-de-uso-saga.md)
 - [ADR 0003 — Proveedor estilo Amadeus, WireMock y resiliencia](docs/adr/0003-fase-3-proveedor-estilo-amadeus.md)
+- [ADR 0004 — Frontend Angular](docs/adr/0004-fase-4-frontend-angular.md)

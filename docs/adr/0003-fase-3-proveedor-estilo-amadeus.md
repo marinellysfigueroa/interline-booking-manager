@@ -1,6 +1,6 @@
 # ADR 0003 — Fase 3: proveedor de vuelos estilo Amadeus, WireMock y resiliencia
 
-- **Estado:** propuesto (pendiente de revisión)
+- **Estado:** aceptado
 - **Fecha:** 2026-10-08
 
 ## Contexto
