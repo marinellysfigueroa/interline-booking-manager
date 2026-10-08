@@ -1,6 +1,6 @@
 # ADR 0004 — Fase 4: frontend Angular
 
-- **Estado:** propuesto (pendiente de revisión)
+- **Estado:** aceptado
 - **Fecha:** 2026-10-08
 
 ## Contexto

@@ -1,0 +1,89 @@
+# =============================================================================
+# Stack local completo: PostgreSQL + WireMock (proveedor estilo Amadeus) + backend + frontend.
+#
+#   cp .env.example .env
+#   docker compose up --build            → http://localhost:4200  (API y Swagger en :8080)
+#   docker compose --profile observability up --build   (+ Jaeger en http://localhost:16686)
+#
+# El backend corre con el perfil prod de Quarkus: configuración solo por variables de entorno.
+# =============================================================================
+name: interline-booking-manager
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 5s
+  timeout: 3s
+  retries: 20
+  start_period: 5s
+
+services:
+  postgres:
+    image: mirror.gcr.io/library/postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?define POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:?define POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+
+  wiremock:
+    image: mirror.gcr.io/wiremock/wiremock:3.13.2
+    # Mismo contrato estilo Amadeus que usan los Dev Services en dev y test
+    volumes:
+      - ./wiremock:/home/wiremock:ro
+    command: ["--disable-banner"]
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/__admin/health"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: ${BACKEND_DOCKERFILE:-backend/Dockerfile}
+    image: interline-backend:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wiremock:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      FLIGHT_OFFERS_PROVIDER: amadeus-style
+      AMADEUS_BASE_URL: http://wiremock:8080
+      AMADEUS_CLIENT_ID: ${AMADEUS_CLIENT_ID:?define AMADEUS_CLIENT_ID en .env}
+      AMADEUS_CLIENT_SECRET: ${AMADEUS_CLIENT_SECRET:?define AMADEUS_CLIENT_SECRET en .env}
+      OIDC_ENABLED: "false"
+      QUARKUS_OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      QUARKUS_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  frontend:
+    build:
+      context: ./frontend
+    image: interline-frontend:local
+    depends_on:
+      - backend
+    environment:
+      API_UPSTREAM: http://backend:8080
+    ports:
+      - "${FRONTEND_PORT:-4200}:8080"
+
+  jaeger:
+    profiles: ["observability"]
+    image: mirror.gcr.io/jaegertracing/all-in-one:1.74.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+volumes:
+  pgdata:

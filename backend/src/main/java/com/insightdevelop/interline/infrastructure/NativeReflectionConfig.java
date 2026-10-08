@@ -1,0 +1,32 @@
+package com.insightdevelop.interline.infrastructure;
+
+import com.insightdevelop.interline.domain.airline.AirlineCode;
+import com.insightdevelop.interline.domain.airport.AirportCode;
+import com.insightdevelop.interline.domain.booking.Fare;
+import com.insightdevelop.interline.domain.booking.FlightNumber;
+import com.insightdevelop.interline.domain.booking.PassengerCounts;
+import com.insightdevelop.interline.domain.offer.FlightOffer;
+import com.insightdevelop.interline.domain.offer.Itinerary;
+import com.insightdevelop.interline.domain.offer.ItineraryDirection;
+import com.insightdevelop.interline.domain.offer.OfferSegment;
+import com.insightdevelop.interline.domain.shared.Miles;
+import com.insightdevelop.interline.domain.shared.Money;
+import io.quarkus.runtime.annotations.RegisterForReflection;
+
+/**
+ * Registro para reflexión en el ejecutable nativo de los records de dominio que Jackson
+ * serializa a JSONB ({@code OfferStoreAdapter}). Los DTO REST y de REST Client los registra
+ * Quarkus solo; estos no, porque no aparecen en ninguna firma JAX-RS.
+ *
+ * <p>Vive en infraestructura para no anotar el dominio. En Spring Native/AOT el equivalente
+ * sería un {@code RuntimeHintsRegistrar}.
+ */
+@RegisterForReflection(targets = {
+        FlightOffer.class, Itinerary.class, OfferSegment.class, ItineraryDirection.class, Fare.class,
+        PassengerCounts.class, Money.class, Miles.class, AirlineCode.class, AirportCode.class, FlightNumber.class
+})
+public final class NativeReflectionConfig {
+
+    private NativeReflectionConfig() {
+    }
+}

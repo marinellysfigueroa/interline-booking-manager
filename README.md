@@ -5,7 +5,7 @@ Gestión de reservas con itinerarios de varias aerolíneas emitidos en un solo t
 
 Quarkus 3.40 LTS (Java 21) + Angular + PostgreSQL, desplegable en GCP (Cloud Run).
 
-> 🚧 En construcción por fases. Fase actual: **4 — frontend Angular**. Al terminar se completará este README con la arquitectura, el
+> 🚧 En construcción por fases. Fase actual: **5 — Docker y docker-compose**. Al terminar se completará este README con la arquitectura, el
 > despliegue y la sección "Quarkus para desarrolladores Spring".
 
 ## Estructura
@@ -18,7 +18,25 @@ wiremock/     Contrato estilo Amadeus (stubs WireMock: mappings + __files)
 docs/adr/     Architecture Decision Records
 ```
 
-## Comandos
+## Todo en Docker (un comando)
+
+```bash
+cp .env.example .env
+docker compose up --build        # frontend http://localhost:4200 · API/Swagger http://localhost:8080/swagger-ui
+docker compose --profile observability up --build      # + Jaeger en http://localhost:16686
+BACKEND_DOCKERFILE=backend/Dockerfile.native docker compose up --build   # backend nativo
+E2E_BASE_URL=http://localhost:4200 npm --prefix frontend run e2e         # e2e contra el stack
+```
+
+Imágenes sueltas (contexto del backend = raíz del repo):
+
+```bash
+docker build -f backend/Dockerfile -t interline-backend:jvm .
+docker build -f backend/Dockerfile.native -t interline-backend:native .
+docker build -t interline-frontend ./frontend
+```
+
+## Desarrollo local
 
 Requisitos: Java 21, Node 24.15 (`frontend/.nvmrc`) y Docker. En dev y test, Dev Services levanta automáticamente
 PostgreSQL y WireMock (con los stubs de `/wiremock` como proveedor de vuelos).
@@ -75,3 +93,4 @@ Para ver la compensación de la saga en local:
 - [ADR 0002 — Persistencia, casos de uso, saga e idempotencia](docs/adr/0002-fase-2-persistencia-casos-de-uso-saga.md)
 - [ADR 0003 — Proveedor estilo Amadeus, WireMock y resiliencia](docs/adr/0003-fase-3-proveedor-estilo-amadeus.md)
 - [ADR 0004 — Frontend Angular](docs/adr/0004-fase-4-frontend-angular.md)
+- [ADR 0005 — Imágenes Docker y docker-compose](docs/adr/0005-fase-5-docker-compose.md)

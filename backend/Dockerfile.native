@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.7
+# =============================================================================
+# Backend como ejecutable nativo (GraalVM/Mandrel) — build multi-stage.
+#
+#   docker build -f backend/Dockerfile.native -t interline-backend:native .
+#
+# El builder es la imagen Mandrel que Quarkus 3.40 usa por defecto (JDK 25; compila el
+# bytecode Java 21 del proyecto). El ejecutable se enlaza "casi estático"
+# (-H:+StaticExecutableWithDynamicLibC, ver application.properties): solo depende de glibc,
+# así que corre sobre distroless/base sin shell. La compilación nativa necesita ~6 GB de RAM.
+#
+# Mismos secretos de build opcionales que el Dockerfile JVM (extra-ca, maven-settings).
+# =============================================================================
+ARG BUILD_IMAGE=quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-25
+ARG MAVEN_IMAGE=mirror.gcr.io/library/maven:3.9.16-eclipse-temurin-21-noble
+ARG RUNTIME_IMAGE=gcr.io/distroless/base-debian12:nonroot
+
+# Maven se copia de la imagen oficial (el builder de Mandrel no lo trae y mvnw necesitaría unzip).
+FROM ${MAVEN_IMAGE} AS maven
+
+# ---------------------------------------------------------------- build
+FROM ${BUILD_IMAGE} AS build
+USER root
+COPY --from=maven /usr/share/maven /opt/maven
+ENV PATH=/opt/maven/bin:$PATH
+# Cada certificado del bundle se importa por separado (keytool solo lee el primero de un archivo).
+RUN --mount=type=secret,id=extra-ca,required=false \
+    if [ -s /run/secrets/extra-ca ]; then \
+      cp /run/secrets/extra-ca /etc/pki/ca-trust/source/anchors/extra-ca.crt && update-ca-trust && \
+      awk '/BEGIN CERT/{n++} {print > ("/tmp/extra-ca-" n ".pem")}' /run/secrets/extra-ca && \
+      for cert in /tmp/extra-ca-*.pem; do \
+        keytool -importcert -noprompt -cacerts -storepass changeit -alias "$(basename "$cert" .pem)" -file "$cert" >/dev/null; \
+      done && rm -f /tmp/extra-ca-*.pem; \
+    fi
+WORKDIR /workspace/backend
+COPY backend/pom.xml ./
+COPY api/openapi.yaml /workspace/api/openapi.yaml
+COPY backend/src/main/ src/main/
+RUN --mount=type=cache,target=/root/.m2 \
+    --mount=type=secret,id=maven-settings,required=false \
+    mvn -B $( [ -s /run/secrets/maven-settings ] && echo "-s /run/secrets/maven-settings" ) package -Dnative -DskipTests
+
+# ---------------------------------------------------------------- runtime
+FROM ${RUNTIME_IMAGE}
+WORKDIR /app
+COPY --from=build /workspace/backend/target/*-runner /app/application
+USER nonroot
+EXPOSE 8080
+ENTRYPOINT ["/app/application"]

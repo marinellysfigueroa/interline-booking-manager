@@ -1,0 +1,19 @@
+# Secretos y configuración local: nunca al repositorio
+.env
+*.env.local
+*.pem
+*.key
+credentials*.json
+*-sa-key.json
+
+# Terraform (fase 6): estado y planes locales
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# IDE / SO
+.idea/
+.vscode/
+.DS_Store

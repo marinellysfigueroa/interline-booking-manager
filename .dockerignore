@@ -1,0 +1,6 @@
+# Contexto de build del backend = raíz del monorepo (necesita api/openapi.yaml).
+# Lista blanca: solo entra lo imprescindible (nada de .git, node_modules, target ni secretos).
+*
+!api/openapi.yaml
+!backend/pom.xml
+!backend/src/main/
