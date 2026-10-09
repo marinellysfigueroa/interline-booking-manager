@@ -42,8 +42,12 @@ env:
 jobs:
   plan:
     name: terraform plan
-    # Los PR desde forks no reciben token OIDC: el plan solo corre para ramas del repositorio.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Los PR desde forks no reciben token OIDC: el plan solo corre para ramas del repositorio, y
+    # solo cuando el stack bootstrap ya está aplicado (variables del repositorio definidas).
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && vars.GCP_WIF_PROVIDER != ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -69,7 +73,7 @@ jobs:
 
   apply:
     name: terraform apply
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
     runs-on: ubuntu-24.04
     environment: infrastructure
     steps:

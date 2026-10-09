@@ -235,13 +235,13 @@ jobs:
 
       # --- Publicación (solo main) ---
       - name: Autenticación en GCP (Workload Identity Federation)
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
       - name: Push a Artifact Registry
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
@@ -256,7 +256,8 @@ jobs:
   deploy:
     name: Despliegue en Cloud Run
     needs: [images, static-analysis, codeql]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # Sin las variables de GCP (bootstrap aún no aplicado) CI termina en verde sin desplegar.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
     runs-on: ubuntu-24.04
     environment:
       name: production
