@@ -15,8 +15,11 @@ server {
     gzip_types text/plain text/css text/javascript application/javascript application/json
                application/problem+json image/svg+xml application/xml;
 
-    # --- Salud (para el HEALTHCHECK del contenedor) ----------------------------
-    location = /healthz {
+    # --- Salud -----------------------------------------------------------------
+    # /health es el endpoint público (smoke test, HEALTHCHECK). En Cloud Run, el front end de
+    # Google reserva algunas rutas terminadas en "z" (/healthz) y responde 404 sin llegar al
+    # contenedor; /healthz se mantiene solo para las sondas internas de Cloud Run, que sí llegan.
+    location ~ ^/healthz?$ {
         access_log off;
         default_type text/plain;
         return 200 "ok\n";

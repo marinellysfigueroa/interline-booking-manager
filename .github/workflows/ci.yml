@@ -290,7 +290,7 @@ jobs:
         run: |
           url=$(gcloud run services describe "$SERVICE_PREFIX-frontend" --region "$REGION" --format 'value(status.url)')
           echo "url=$url" >> "$GITHUB_OUTPUT"
-          curl -fsS "$url/healthz"
+          curl -fsS "$url/health"
           curl -fsS "$url/api/v1/airports?query=mad" | grep -q '"MAD"'
           curl -fsS -o /dev/null "$url/config/runtime-config.json"
           echo "Desplegado: $url" >> "$GITHUB_STEP_SUMMARY"
