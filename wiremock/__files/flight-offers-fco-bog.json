@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "count": 1
+  },
+  "data": [
+    {
+      "type": "flight-offer",
+      "id": "1",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT17H05M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "FCO",
+                "at": "{{request.query.departureDate}}T07:00:00"
+              },
+              "arrival": {
+                "iataCode": "MAD",
+                "at": "{{request.query.departureDate}}T09:35:00"
+              },
+              "carrierCode": "IB",
+              "number": "3231",
+              "operating": {
+                "carrierCode": "IB"
+              },
+              "duration": "PT2H35M",
+              "id": "1",
+              "numberOfStops": 0
+            },
+            {
+              "departure": {
+                "iataCode": "MAD",
+                "at": "{{request.query.departureDate}}T12:05:00"
+              },
+              "arrival": {
+                "iataCode": "BOG",
+                "at": "{{request.query.departureDate}}T16:05:00"
+              },
+              "carrierCode": "AV",
+              "number": "27",
+              "operating": {
+                "carrierCode": "AV"
+              },
+              "duration": "PT11H00M",
+              "id": "2",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 1095.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 109.50 '*' request.query.infants)}}",
+        "base": "{{math (math 1095.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 109.50 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 1095.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 109.50 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "AV"
+      ],
+      "travelerPricings": []
+    }
+  ]
+}

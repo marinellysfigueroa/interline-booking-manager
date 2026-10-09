@@ -1,0 +1,1492 @@
+openapi: 3.0.3
+# ---------------------------------------------------------------------------
+# Contrato de la API de Interline Booking Manager (contract-first).
+#
+# Este archivo es la ÚNICA fuente de verdad del contrato HTTP:
+#  - El backend lo publica tal cual en /openapi y Swagger UI (se copia a
+#    META-INF/openapi.yaml en el build) y genera a partir de él las interfaces
+#    JAX-RS y los DTO (openapi-generator, fase 2).
+#  - El frontend generará sus tipos TypeScript desde aquí (fase 4).
+#
+# Se usa OpenAPI 3.0.3 (y no 3.1) porque el soporte de 3.1 en openapi-generator
+# sigue siendo parcial; ver docs/adr/0001-fase-1-estructura-contrato-dominio.md (D3).
+# ---------------------------------------------------------------------------
+info:
+  title: Interline Booking Manager API
+  version: 1.0.0
+  description: |
+    API para buscar ofertas y gestionar reservas con itinerarios de varias
+    aerolíneas emitidos en un solo ticket (**interline**).
+
+    ## Convenciones
+    - **Errores**: todas las respuestas de error usan Problem Details
+      ([RFC 7807](https://www.rfc-editor.org/rfc/rfc7807)) con
+      `Content-Type: application/problem+json`.
+      - `400` petición mal formada: JSON inválido, campos obligatorios ausentes,
+        formatos incorrectos o falta el header `Idempotency-Key`.
+      - `404` el recurso no existe (p. ej. localizador desconocido).
+      - `409` conflicto con el **estado actual** del recurso: transición de
+        estado no permitida o petición idempotente aún en curso.
+      - `422` la petición es sintácticamente válida pero viola una **regla de
+        negocio** (regla de infantes, falta de acuerdo interline, oferta
+        expirada, pago insuficiente, segmento no confirmado...).
+    - **Correlación**: envía `X-Correlation-ID` para trazar una petición de
+      extremo a extremo; si no se envía, el servidor genera uno y lo devuelve.
+    - **White-label**: `X-Tenant` indica el código IATA de la aerolínea cuya
+      marca está usando el cliente.
+    - **Fechas y horas de vuelo**: `departureAt`/`arrivalAt` son horas
+      **locales del aeropuerto** (sin offset), como en los sistemas de reservas.
+      Los instantes de auditoría (`createdAt`, `at`...) son UTC con offset.
+    - **Seguridad**: preparada para OIDC (Bearer JWT). En el perfil `dev` la
+      autenticación está desactivada.
+  contact:
+    name: Interline Booking Manager
+servers:
+  - url: /
+    description: Mismo origen que sirve la API (local, docker-compose o Cloud Run)
+security:
+  - bearerAuth: []
+tags:
+  - name: Airports
+    description: Catálogo de aeropuertos para autocompletado.
+  - name: Offers
+    description: Búsqueda de ofertas de vuelo en el proveedor externo.
+  - name: Bookings
+    description: Creación, consulta y ciclo de vida de reservas.
+
+paths:
+  /api/v1/airports:
+    get:
+      tags: [Airports]
+      operationId: searchAirports
+      summary: Autocompletado de aeropuertos
+      description: |
+        Devuelve aeropuertos cuyo código IATA, ciudad o nombre empiezan por (o
+        contienen) el texto indicado. Pensado para un campo de autocompletado:
+        es barato, sin efectos secundarios y cacheable.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+        - name: query
+          in: query
+          required: true
+          description: Texto a buscar (mínimo 2 caracteres). No distingue mayúsculas ni tildes.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 50
+          example: mad
+        - name: limit
+          in: query
+          required: false
+          description: Número máximo de resultados.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        '200':
+          description: Aeropuertos que coinciden (puede ser una lista vacía).
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Airport'
+              example:
+                - code: MAD
+                  name: Adolfo Suárez Madrid-Barajas
+                  city: Madrid
+                  countryCode: ES
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/offers/search:
+    post:
+      tags: [Offers]
+      operationId: searchOffers
+      summary: Buscar ofertas de vuelo
+      description: |
+        Consulta al proveedor de vuelos configurado (estilo Amadeus) y devuelve
+        ofertas normalizadas. Cada oferta indica si puede emitirse en **un
+        solo ticket**: es decir, si la aerolínea validadora tiene acuerdo
+        interline con todas las aerolíneas operadoras.
+
+        La oferta queda disponible para reservar mediante `offerId` hasta
+        `expiresAt`. Esta operación no modifica estado (POST por el tamaño y
+        la estructura de los criterios).
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfferSearchRequest'
+            examples:
+              oneWay:
+                summary: Solo ida BOG → FCO, 2 adultos y 1 infante
+                value:
+                  origin: BOG
+                  destination: FCO
+                  departureDate: '2026-11-20'
+                  passengers:
+                    adults: 2
+                    children: 0
+                    infants: 1
+              roundTrip:
+                summary: Ida y vuelta LIM ↔ MIA, 1 adulto
+                value:
+                  origin: LIM
+                  destination: MIA
+                  departureDate: '2026-12-10'
+                  returnDate: '2026-12-17'
+                  passengers:
+                    adults: 1
+                    children: 0
+                    infants: 0
+      responses:
+        '200':
+          description: Ofertas encontradas (puede ser una lista vacía).
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferSearchResponse'
+              example:
+                count: 1
+                offers:
+                  - offerId: OF-7f3c9a1e
+                    validatingAirline: AV
+                    interline:
+                      singleTicketEligible: true
+                      operatingAirlines: [AV, IB]
+                      missingAgreements: []
+                    itineraries:
+                      - direction: OUTBOUND
+                        duration: PT14H10M
+                        segments:
+                          - operatingAirline: AV
+                            flightNumber: '26'
+                            origin: BOG
+                            destination: MAD
+                            departureAt: '2026-11-20T19:05:00'
+                            arrivalAt: '2026-11-21T11:40:00'
+                          - operatingAirline: IB
+                            flightNumber: '3234'
+                            origin: MAD
+                            destination: FCO
+                            departureAt: '2026-11-21T13:15:00'
+                            arrivalAt: '2026-11-21T15:45:00'
+                    price:
+                      total:
+                        amount: 1849.60
+                        currency: USD
+                      milesEquivalent: 184960
+                    expiresAt: '2026-11-01T15:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/bookings:
+    post:
+      tags: [Bookings]
+      operationId: createBooking
+      summary: Crear una reserva a partir de una oferta
+      description: |
+        Crea la reserva, la tarifica contra la oferta y solicita los segmentos a
+        las aerolíneas operadoras. Si todo va bien la reserva queda en `HELD`
+        (algunos segmentos pueden seguir en `UC`, pendientes de confirmación).
+
+        **Idempotencia** (según draft-ietf-httpapi-idempotency-key-header):
+        - El header `Idempotency-Key` es obligatorio (`400` si falta).
+        - Repetir la misma clave con el mismo cuerpo devuelve la respuesta
+          original (mismo `201` y mismo localizador) con
+          `Idempotency-Replayed: true`, sin crear otra reserva.
+        - Repetir la clave con un cuerpo distinto devuelve `422`.
+        - Si la petición original aún se está procesando devuelve `409`.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+            example:
+              offerId: OF-7f3c9a1e
+              contact:
+                email: ana.perez@example.com
+                phone: '+573001234567'
+              passengers:
+                - ref: P1
+                  type: ADT
+                  firstName: Ana
+                  lastName: Pérez
+                  dateOfBirth: '1990-04-12'
+                - ref: P2
+                  type: ADT
+                  firstName: Luis
+                  lastName: Gómez
+                  dateOfBirth: '1988-09-30'
+                - ref: P3
+                  type: INF
+                  firstName: Sofía
+                  lastName: Gómez
+                  dateOfBirth: '2026-01-15'
+                  associatedAdultRef: P2
+      responses:
+        '201':
+          description: Reserva creada (o respuesta original repetida por idempotencia).
+          headers:
+            Location:
+              description: URL de la reserva creada.
+              schema:
+                type: string
+              example: /api/v1/bookings/K7Q2MX
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              examples:
+                held:
+                  $ref: '#/components/examples/HeldBooking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: La oferta no existe o ya no está disponible.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: https://interline.example.com/problems/offer-not-found
+                title: Oferta no encontrada
+                status: 404
+                detail: La oferta OF-7f3c9a1e no existe.
+                code: OFFER_NOT_FOUND
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: |
+            Regla de negocio incumplida. Si la reserva llegó a crearse y se
+            compensó (una operadora rechazó un segmento), el problema incluye
+            `locator` y `bookingStatus: FAILED`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                infantRule:
+                  summary: Infante sin adulto
+                  value:
+                    type: https://interline.example.com/problems/infant-rule-violation
+                    title: Regla de infantes
+                    status: 422
+                    detail: El adulto Luis Gómez ya lleva un infante; cada adulto puede llevar solo uno.
+                    code: INFANT_RULE_VIOLATION
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+                passengerMismatch:
+                  summary: Pasajeros distintos de los de la oferta
+                  value:
+                    type: https://interline.example.com/problems/passenger-mismatch
+                    title: Pasajeros distintos de la oferta
+                    status: 422
+                    detail: La oferta se tarificó para 2 ADT y 1 INF y la reserva trae 1 ADT.
+                    code: PASSENGER_MISMATCH
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+                segmentRejected:
+                  summary: Una operadora rechazó un segmento (reserva compensada)
+                  value:
+                    type: https://interline.example.com/problems/segment-rejected
+                    title: Segmento rechazado
+                    status: 422
+                    detail: La operadora rechazó el segmento IB3234 MAD-FCO
+                    code: SEGMENT_REJECTED
+                    locator: K7Q2MX
+                    bookingStatus: FAILED
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+    get:
+      tags: [Bookings]
+      operationId: listBookings
+      summary: Listar reservas (paginado)
+      description: |
+        Lista reservas ordenadas de la más reciente a la más antigua. Si se
+        envía `X-Tenant`, solo se devuelven las reservas cuya aerolínea
+        validadora es ese tenant.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+        - name: status
+          in: query
+          required: false
+          description: Filtra por uno o varios estados (`?status=HELD&status=TICKETED`).
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/BookingStatus'
+        - name: page
+          in: query
+          required: false
+          description: Número de página, empezando en 0.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Tamaño de página.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Página de reservas.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPage'
+              example:
+                page: 0
+                size: 20
+                totalElements: 1
+                totalPages: 1
+                items:
+                  - locator: K7Q2MX
+                    status: HELD
+                    validatingAirline: AV
+                    origin: BOG
+                    destination: FCO
+                    firstDepartureAt: '2026-11-20T19:05:00'
+                    passengerCount: 3
+                    createdAt: '2026-11-01T15:12:03Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/bookings/{locator}:
+    get:
+      tags: [Bookings]
+      operationId: getBooking
+      summary: Consultar una reserva por localizador
+      description: |
+        Devuelve la reserva completa: pasajeros, segmentos con su estado,
+        pagos, tickets, la línea de tiempo de estados (`statusHistory`) y las
+        acciones disponibles en el estado actual (`availableActions`).
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/Locator'
+      responses:
+        '200':
+          description: Reserva encontrada, con su línea de tiempo de estados.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              examples:
+                held:
+                  $ref: '#/components/examples/HeldBooking'
+                ticketed:
+                  $ref: '#/components/examples/TicketedBooking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/bookings/{locator}/payments:
+    post:
+      tags: [Bookings]
+      operationId: authorizePayment
+      summary: Autorizar el pago de una reserva
+      description: |
+        Autoriza (sin capturar) el pago de una reserva en `HELD`: efectivo,
+        millas o mixto. Las millas se bloquean (hold) en el programa de
+        lealtad. La reserva pasa a `PAYMENT_AUTHORIZED`. La captura ocurre al
+        emitir el ticket.
+
+        Reglas:
+        - `CASH`: solo `cash`, debe cubrir el total de la tarifa.
+        - `MILES`: solo `miles`, debe cubrir `milesEquivalent`.
+        - `MIXED`: `cash` y `miles` > 0; juntos deben cubrir la tarifa de forma
+          proporcional (`cash/total + miles/milesEquivalent ≥ 1`).
+
+        Si la forma del cuerpo no corresponde al método (p. ej. `CASH` sin
+        `cash`) se responde `400`; si los importes no cubren la tarifa, `422`.
+        Exige `Idempotency-Key` con la misma semántica que la creación.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Locator'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+            examples:
+              cash:
+                summary: Pago en efectivo
+                value:
+                  method: CASH
+                  cash:
+                    amount: 1849.60
+                    currency: USD
+              miles:
+                summary: Pago con millas
+                value:
+                  method: MILES
+                  miles:
+                    amount: 184960
+                    memberNumber: '12345678901'
+              mixed:
+                summary: Pago mixto (50 % / 50 %)
+                value:
+                  method: MIXED
+                  cash:
+                    amount: 924.80
+                    currency: USD
+                  miles:
+                    amount: 92480
+                    memberNumber: '12345678901'
+      responses:
+        '201':
+          description: Pago autorizado; devuelve la reserva actualizada.
+          headers:
+            Location:
+              description: URL de la reserva.
+              schema:
+                type: string
+              example: /api/v1/bookings/K7Q2MX
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /api/v1/bookings/{locator}/ticket:
+    post:
+      tags: [Bookings]
+      operationId: issueTicket
+      summary: Emitir el ticket único de la reserva
+      description: |
+        Ejecuta la saga de emisión:
+        1. Verifica el acuerdo interline de la validadora con todas las
+           operadoras (`422` si falta alguno; la reserva no cambia).
+        2. Confirma los segmentos `UC` con reintentos.
+        3. Captura el pago y emite un ticket por pasajero → `TICKETED`.
+
+        Si algún segmento sigue en `UC` tras los reintentos se compensa:
+        se cancelan los segmentos confirmados, se libera la autorización de
+        pago / hold de millas, la reserva pasa a `FAILED` y se responde `422`
+        con `bookingStatus: FAILED`.
+
+        Es idempotente por estado: sobre una reserva ya `TICKETED` devuelve
+        `200` con los mismos tickets.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/Locator'
+      responses:
+        '200':
+          description: Reserva emitida.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              examples:
+                ticketed:
+                  $ref: '#/components/examples/TicketedBooking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: |
+            No se pudo emitir por una regla de negocio. Si la saga compensó,
+            `bookingStatus` es `FAILED`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                interlineMissing:
+                  summary: Falta acuerdo interline
+                  value:
+                    type: https://interline.example.com/problems/interline-agreement-missing
+                    title: Sin acuerdo interline
+                    status: 422
+                    detail: La validadora AV no tiene acuerdo interline con LA.
+                    code: INTERLINE_AGREEMENT_MISSING
+                    bookingStatus: PAYMENT_AUTHORIZED
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+                segmentNotConfirmed:
+                  summary: Saga compensada (segmento UC)
+                  value:
+                    type: https://interline.example.com/problems/segment-not-confirmed
+                    title: Segmento no confirmado
+                    status: 422
+                    detail: El segmento IB3234 MAD-FCO siguió en UC tras 3 intentos; la reserva se compensó.
+                    code: SEGMENT_NOT_CONFIRMED
+                    locator: K7Q2MX
+                    bookingStatus: FAILED
+                    correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+
+  /api/v1/bookings/{locator}/cancel:
+    post:
+      tags: [Bookings]
+      operationId: cancelBooking
+      summary: Cancelar una reserva
+      description: |
+        Cancela los segmentos activos, libera pagos autorizados / holds de
+        millas y pasa la reserva a `CANCELLED`. Una reserva `TICKETED` no se
+        puede cancelar por esta vía (requiere anulación/reembolso, fuera de
+        alcance) → `409`. Es idempotente: cancelar una reserva ya cancelada
+        devuelve `200`.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/Locator'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelBookingRequest'
+            example:
+              reason: El cliente cambió sus planes
+      responses:
+        '200':
+          description: Reserva cancelada.
+          headers:
+            X-Correlation-ID:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token de acceso OIDC. Desactivado en el perfil dev.
+
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Identificador de correlación; se propaga a logs, trazas y proveedores externos.
+      schema:
+        type: string
+        maxLength: 64
+        pattern: '^[A-Za-z0-9._-]{1,64}$'
+      example: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+    Tenant:
+      name: X-Tenant
+      in: header
+      required: false
+      description: Código IATA de la aerolínea white-label que usa el cliente.
+      schema:
+        $ref: '#/components/schemas/AirlineCode'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Clave única por intento lógico de operación (se recomienda un UUID v4).
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+        pattern: '^[A-Za-z0-9_-]{8,64}$'
+      example: 3f1b8c52-6a0e-4d1f-9a47-0c2d5e8b7a19
+    Locator:
+      name: locator
+      in: path
+      required: true
+      description: Localizador de la reserva (PNR).
+      schema:
+        $ref: '#/components/schemas/BookingLocator'
+
+  headers:
+    CorrelationId:
+      description: Identificador de correlación de la petición (recibido o generado).
+      schema:
+        type: string
+    IdempotencyReplayed:
+      description: '`true` si la respuesta es la repetición de una petición idempotente anterior.'
+      schema:
+        type: boolean
+
+  responses:
+    BadRequest:
+      description: Petición mal formada o con datos que no cumplen el formato.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://interline.example.com/problems/validation-error
+            title: Petición inválida
+            status: 400
+            detail: La petición contiene 2 errores de validación.
+            code: VALIDATION_ERROR
+            correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+            errors:
+              - field: passengers[0].dateOfBirth
+                message: es obligatorio
+              - field: origin
+                message: debe ser un código IATA de 3 letras
+    NotFound:
+      description: El recurso no existe.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://interline.example.com/problems/booking-not-found
+            title: Reserva no encontrada
+            status: 404
+            detail: No existe una reserva con localizador K7Q2MX.
+            code: BOOKING_NOT_FOUND
+            correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+    Conflict:
+      description: Conflicto con el estado actual del recurso.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            invalidTransition:
+              summary: Transición de estado no permitida
+              value:
+                type: https://interline.example.com/problems/invalid-state-transition
+                title: Transición de estado no permitida
+                status: 409
+                detail: No se puede pasar de TICKETED a CANCELLED.
+                code: INVALID_STATE_TRANSITION
+                bookingStatus: TICKETED
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+            concurrentModification:
+              summary: Otra petición modificó la reserva a la vez
+              value:
+                type: https://interline.example.com/problems/concurrent-modification
+                title: Modificación concurrente
+                status: 409
+                detail: La reserva fue modificada por otra petición; vuelve a consultarla.
+                code: CONCURRENT_MODIFICATION
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+            idempotencyInProgress:
+              summary: Petición idempotente en curso
+              value:
+                type: https://interline.example.com/problems/idempotency-request-in-progress
+                title: Petición en curso
+                status: 409
+                detail: Ya hay una petición en curso con esta Idempotency-Key.
+                code: IDEMPOTENCY_REQUEST_IN_PROGRESS
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+    UnprocessableEntity:
+      description: La petición es válida pero viola una regla de negocio.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            infantRule:
+              summary: Más infantes que adultos
+              value:
+                type: https://interline.example.com/problems/infant-rule-violation
+                title: Regla de infantes
+                status: 422
+                detail: Hay 2 infantes y solo 1 adulto; cada infante debe ir con un adulto distinto.
+                code: INFANT_RULE_VIOLATION
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+            idempotencyMismatch:
+              summary: Idempotency-Key reutilizada con otro cuerpo
+              value:
+                type: https://interline.example.com/problems/idempotency-key-reused
+                title: Idempotency-Key reutilizada
+                status: 422
+                detail: La Idempotency-Key ya se usó con un cuerpo de petición distinto.
+                code: IDEMPOTENCY_KEY_REUSED
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+            insufficientPayment:
+              summary: El pago no cubre la tarifa
+              value:
+                type: https://interline.example.com/problems/insufficient-payment
+                title: Pago insuficiente
+                status: 422
+                detail: El pago cubre 80 % de la tarifa.
+                code: INSUFFICIENT_PAYMENT
+                bookingStatus: HELD
+                correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+    ServiceUnavailable:
+      description: El proveedor de vuelos no está disponible (timeout o circuit breaker abierto).
+      headers:
+        Retry-After:
+          description: Segundos recomendados antes de reintentar.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://interline.example.com/problems/provider-unavailable
+            title: Proveedor no disponible
+            status: 503
+            detail: El proveedor de vuelos no respondió a tiempo.
+            code: PROVIDER_UNAVAILABLE
+            correlationId: 8d0c2f0e-5b1a-4f7e-9a51-2c1f0f6a9b11
+
+  schemas:
+    # ---------- Tipos básicos ----------
+    AirlineCode:
+      type: string
+      description: Código IATA de aerolínea (2 caracteres alfanuméricos, no ambos dígitos).
+      pattern: '^(?:[A-Z]{2}|[A-Z][0-9]|[0-9][A-Z])$'
+      example: AV
+    AirportCode:
+      type: string
+      description: Código IATA de aeropuerto (3 letras).
+      pattern: '^[A-Z]{3}$'
+      example: BOG
+    BookingLocator:
+      type: string
+      description: |
+        Localizador tipo PNR de 6 caracteres. Se excluyen 0, 1, I y O para
+        evitar confusiones al dictarlo.
+      pattern: '^[A-HJ-NP-Z2-9]{6}$'
+      example: K7Q2MX
+    LocalDateTime:
+      type: string
+      description: Fecha y hora LOCAL del aeropuerto, sin offset (ISO-8601).
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$'
+      example: '2026-11-20T19:05:00'
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          minimum: 0
+          description: Importe decimal (se mapea a BigDecimal).
+          example: 1849.60
+        currency:
+          type: string
+          description: Código de moneda ISO 4217.
+          pattern: '^[A-Z]{3}$'
+          example: USD
+
+    # ---------- Aeropuertos ----------
+    Airport:
+      type: object
+      required: [code, name, city, countryCode]
+      properties:
+        code:
+          $ref: '#/components/schemas/AirportCode'
+        name:
+          type: string
+          example: El Dorado International
+        city:
+          type: string
+          example: Bogotá
+        countryCode:
+          type: string
+          description: Código de país ISO 3166-1 alfa-2.
+          pattern: '^[A-Z]{2}$'
+          example: CO
+
+    # ---------- Ofertas ----------
+    PassengerCounts:
+      type: object
+      description: |
+        Composición del grupo. Mínimo 1 adulto, máximo 9 asientos
+        (adultos + niños) y nunca más infantes que adultos.
+      required: [adults]
+      properties:
+        adults:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9
+          example: 2
+        children:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 8
+          default: 0
+          example: 0
+        infants:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 9
+          default: 0
+          example: 1
+    OfferSearchRequest:
+      type: object
+      required: [origin, destination, departureDate, passengers]
+      properties:
+        origin:
+          $ref: '#/components/schemas/AirportCode'
+        destination:
+          $ref: '#/components/schemas/AirportCode'
+        departureDate:
+          type: string
+          format: date
+          description: Fecha de salida (no puede ser pasada).
+          example: '2026-11-20'
+        returnDate:
+          type: string
+          format: date
+          description: Fecha de regreso; si se omite, la búsqueda es solo ida.
+          example: '2026-11-27'
+        passengers:
+          $ref: '#/components/schemas/PassengerCounts'
+        validatingAirline:
+          $ref: '#/components/schemas/AirlineCode'
+    OfferSearchResponse:
+      type: object
+      required: [count, offers]
+      properties:
+        count:
+          type: integer
+          format: int32
+          example: 1
+        offers:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlightOffer'
+    FlightOffer:
+      type: object
+      required: [offerId, validatingAirline, interline, itineraries, price, expiresAt]
+      properties:
+        offerId:
+          type: string
+          description: Identificador opaco de la oferta, válido hasta `expiresAt`.
+          example: OF-7f3c9a1e
+        validatingAirline:
+          $ref: '#/components/schemas/AirlineCode'
+        interline:
+          $ref: '#/components/schemas/InterlineEligibility'
+        itineraries:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Itinerary'
+        price:
+          $ref: '#/components/schemas/Fare'
+        expiresAt:
+          type: string
+          format: date-time
+          example: '2026-11-01T15:30:00Z'
+    InterlineEligibility:
+      type: object
+      required: [singleTicketEligible, operatingAirlines, missingAgreements]
+      properties:
+        singleTicketEligible:
+          type: boolean
+          description: true si la validadora tiene acuerdo interline con todas las operadoras.
+        operatingAirlines:
+          type: array
+          items:
+            $ref: '#/components/schemas/AirlineCode'
+        missingAgreements:
+          type: array
+          description: Operadoras con las que la validadora NO tiene acuerdo.
+          items:
+            $ref: '#/components/schemas/AirlineCode'
+    Itinerary:
+      type: object
+      required: [direction, duration, segments]
+      properties:
+        direction:
+          type: string
+          enum: [OUTBOUND, INBOUND]
+        duration:
+          type: string
+          description: Duración total ISO-8601 (incluye conexiones).
+          example: PT14H10M
+        segments:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/FlightSegment'
+    FlightSegment:
+      type: object
+      required: [operatingAirline, flightNumber, origin, destination, departureAt, arrivalAt]
+      properties:
+        operatingAirline:
+          $ref: '#/components/schemas/AirlineCode'
+        flightNumber:
+          type: string
+          description: Número de vuelo sin el código de aerolínea (1–4 dígitos y sufijo opcional).
+          pattern: '^[0-9]{1,4}[A-Z]?$'
+          example: '26'
+        origin:
+          $ref: '#/components/schemas/AirportCode'
+        destination:
+          $ref: '#/components/schemas/AirportCode'
+        departureAt:
+          $ref: '#/components/schemas/LocalDateTime'
+        arrivalAt:
+          $ref: '#/components/schemas/LocalDateTime'
+    Fare:
+      type: object
+      required: [total, milesEquivalent]
+      properties:
+        total:
+          $ref: '#/components/schemas/Money'
+        milesEquivalent:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Precio total expresado en millas del programa de la validadora.
+          example: 184960
+
+    # ---------- Reservas: peticiones ----------
+    PassengerType:
+      type: string
+      description: |
+        `ADT` adulto (≥ 12 años), `CHD` niño (2–11), `INF` infante (< 2, viaja
+        en brazos de un adulto). La edad se calcula a la fecha del primer vuelo.
+      enum: [ADT, CHD, INF]
+    PassengerInput:
+      type: object
+      required: [ref, type, firstName, lastName, dateOfBirth]
+      properties:
+        ref:
+          type: string
+          description: Referencia local del cliente para enlazar infantes con su adulto.
+          pattern: '^[A-Za-z0-9_-]{1,10}$'
+          example: P1
+        type:
+          $ref: '#/components/schemas/PassengerType'
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: Ana
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: Pérez
+        dateOfBirth:
+          type: string
+          format: date
+          example: '1990-04-12'
+        associatedAdultRef:
+          type: string
+          description: Obligatorio solo para `INF`; `ref` del adulto que lo lleva.
+          example: P1
+    Contact:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 120
+          example: ana.perez@example.com
+        phone:
+          type: string
+          description: Teléfono en formato E.164.
+          pattern: '^\+[1-9][0-9]{6,14}$'
+          example: '+573001234567'
+    CreateBookingRequest:
+      type: object
+      required: [offerId, passengers, contact]
+      properties:
+        offerId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: OF-7f3c9a1e
+        passengers:
+          type: array
+          minItems: 1
+          maxItems: 18
+          items:
+            $ref: '#/components/schemas/PassengerInput'
+        contact:
+          $ref: '#/components/schemas/Contact'
+    PaymentMethod:
+      type: string
+      enum: [CASH, MILES, MIXED]
+    MilesRedemption:
+      type: object
+      required: [amount, memberNumber]
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 184960
+        memberNumber:
+          type: string
+          description: Número de socio del programa de lealtad de la validadora.
+          pattern: '^[0-9]{6,16}$'
+          example: '12345678901'
+    PaymentRequest:
+      type: object
+      required: [method]
+      description: Según `method` se exige `cash`, `miles` o ambos (ver la operación).
+      properties:
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        cash:
+          $ref: '#/components/schemas/Money'
+        miles:
+          $ref: '#/components/schemas/MilesRedemption'
+    CancelBookingRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 200
+          example: El cliente cambió sus planes
+
+    # ---------- Reservas: respuestas ----------
+    BookingStatus:
+      type: string
+      description: |
+        Máquina de estados: `DRAFT → PRICED → HELD → PAYMENT_AUTHORIZED →
+        TICKETED`. Desde cualquier estado no terminal se puede salir a
+        `FAILED` o `CANCELLED`. `TICKETED`, `FAILED` y `CANCELLED` son
+        terminales.
+      enum: [DRAFT, PRICED, HELD, PAYMENT_AUTHORIZED, TICKETED, FAILED, CANCELLED]
+    SegmentStatus:
+      type: string
+      description: '`HK` confirmado, `UC` no confirmado, `XX` cancelado.'
+      enum: [HK, UC, XX]
+    PaymentStatus:
+      type: string
+      description: '`AUTHORIZED` autorizado/bloqueado, `CAPTURED` cobrado, `RELEASED` liberado.'
+      enum: [AUTHORIZED, CAPTURED, RELEASED]
+    BookingAction:
+      type: string
+      description: Acción que el cliente puede ejecutar en el estado actual.
+      enum: [PAY, TICKET, CANCEL]
+    Passenger:
+      type: object
+      required: [id, type, firstName, lastName, dateOfBirth]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/PassengerType'
+        firstName:
+          type: string
+        lastName:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        associatedAdultId:
+          type: string
+          format: uuid
+          description: Solo para `INF`.
+    Segment:
+      allOf:
+        - $ref: '#/components/schemas/FlightSegment'
+        - type: object
+          required: [id, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              $ref: '#/components/schemas/SegmentStatus'
+    MilesAmount:
+      type: object
+      required: [amount, memberNumber]
+      properties:
+        amount:
+          type: integer
+          format: int64
+          example: 184960
+        memberNumber:
+          type: string
+          description: Número de socio enmascarado.
+          example: '*******8901'
+    Payment:
+      type: object
+      required: [id, method, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        cash:
+          $ref: '#/components/schemas/Money'
+        miles:
+          $ref: '#/components/schemas/MilesAmount'
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        createdAt:
+          type: string
+          format: date-time
+    Ticket:
+      type: object
+      required: [number, passengerId, issuedAt]
+      properties:
+        number:
+          type: string
+          description: Número de ticket de 13 dígitos (prefijo contable de 3 dígitos de la validadora + 10 dígitos).
+          pattern: '^[0-9]{13}$'
+          example: '1342412345678'
+        passengerId:
+          type: string
+          format: uuid
+        issuedAt:
+          type: string
+          format: date-time
+    StatusChange:
+      type: object
+      required: [to, at]
+      properties:
+        from:
+          $ref: '#/components/schemas/BookingStatus'
+        to:
+          $ref: '#/components/schemas/BookingStatus'
+        at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+    Booking:
+      type: object
+      required:
+        - locator
+        - status
+        - validatingAirline
+        - passengers
+        - segments
+        - payments
+        - tickets
+        - statusHistory
+        - availableActions
+        - createdAt
+        - updatedAt
+      properties:
+        locator:
+          $ref: '#/components/schemas/BookingLocator'
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        validatingAirline:
+          $ref: '#/components/schemas/AirlineCode'
+        fare:
+          $ref: '#/components/schemas/Fare'
+        contact:
+          $ref: '#/components/schemas/Contact'
+        passengers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Passenger'
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Segment'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+        statusHistory:
+          type: array
+          description: Línea de tiempo de estados, del más antiguo al más reciente.
+          items:
+            $ref: '#/components/schemas/StatusChange'
+        availableActions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingAction'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BookingSummary:
+      type: object
+      required: [locator, status, validatingAirline, origin, destination, firstDepartureAt, passengerCount, createdAt]
+      properties:
+        locator:
+          $ref: '#/components/schemas/BookingLocator'
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        validatingAirline:
+          $ref: '#/components/schemas/AirlineCode'
+        origin:
+          $ref: '#/components/schemas/AirportCode'
+        destination:
+          $ref: '#/components/schemas/AirportCode'
+        firstDepartureAt:
+          $ref: '#/components/schemas/LocalDateTime'
+        passengerCount:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+    BookingPage:
+      type: object
+      required: [items, page, size, totalElements, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingSummary'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+
+    # ---------- Errores ----------
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          example: passengers[0].dateOfBirth
+        message:
+          type: string
+          example: es obligatorio
+    Problem:
+      type: object
+      description: Problem Details (RFC 7807) con extensiones propias.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI que identifica el tipo de problema.
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string
+        instance:
+          type: string
+          description: Ruta de la petición que originó el problema.
+          example: /api/v1/bookings/K7Q2MX/ticket
+        code:
+          type: string
+          description: Código estable legible por máquina (extensión).
+          example: INFANT_RULE_VIOLATION
+        correlationId:
+          type: string
+          description: Identificador de correlación de la petición (extensión).
+        bookingStatus:
+          $ref: '#/components/schemas/BookingStatus'
+        locator:
+          $ref: '#/components/schemas/BookingLocator'
+        errors:
+          type: array
+          description: Errores por campo (solo en 400 de validación).
+          items:
+            $ref: '#/components/schemas/FieldError'
+
+  examples:
+    HeldBooking:
+      summary: Reserva en HELD con un segmento aún UC
+      value:
+        locator: K7Q2MX
+        status: HELD
+        validatingAirline: AV
+        fare:
+          total:
+            amount: 1849.60
+            currency: USD
+          milesEquivalent: 184960
+        contact:
+          email: ana.perez@example.com
+          phone: '+573001234567'
+        passengers:
+          - id: 0b6f7c1e-3d2a-4c55-8f0e-1a2b3c4d5e01
+            type: ADT
+            firstName: Ana
+            lastName: Pérez
+            dateOfBirth: '1990-04-12'
+          - id: 0b6f7c1e-3d2a-4c55-8f0e-1a2b3c4d5e02
+            type: ADT
+            firstName: Luis
+            lastName: Gómez
+            dateOfBirth: '1988-09-30'
+          - id: 0b6f7c1e-3d2a-4c55-8f0e-1a2b3c4d5e03
+            type: INF
+            firstName: Sofía
+            lastName: Gómez
+            dateOfBirth: '2026-01-15'
+            associatedAdultId: 0b6f7c1e-3d2a-4c55-8f0e-1a2b3c4d5e02
+        segments:
+          - id: 5a0e1d2c-7b3f-4e8a-9c6d-000000000001
+            operatingAirline: AV
+            flightNumber: '26'
+            origin: BOG
+            destination: MAD
+            departureAt: '2026-11-20T19:05:00'
+            arrivalAt: '2026-11-21T11:40:00'
+            status: HK
+          - id: 5a0e1d2c-7b3f-4e8a-9c6d-000000000002
+            operatingAirline: IB
+            flightNumber: '3234'
+            origin: MAD
+            destination: FCO
+            departureAt: '2026-11-21T13:15:00'
+            arrivalAt: '2026-11-21T15:45:00'
+            status: UC
+        payments: []
+        tickets: []
+        statusHistory:
+          - to: DRAFT
+            at: '2026-11-01T15:12:03Z'
+          - from: DRAFT
+            to: PRICED
+            at: '2026-11-01T15:12:03Z'
+          - from: PRICED
+            to: HELD
+            at: '2026-11-01T15:12:04Z'
+        availableActions: [PAY, CANCEL]
+        createdAt: '2026-11-01T15:12:03Z'
+        updatedAt: '2026-11-01T15:12:04Z'
+    TicketedBooking:
+      summary: Reserva emitida
+      value:
+        locator: K7Q2MX
+        status: TICKETED
+        validatingAirline: AV
+        fare:
+          total:
+            amount: 1849.60
+            currency: USD
+          milesEquivalent: 184960
+        passengers:
+          - id: 0b6f7c1e-3d2a-4c55-8f0e-1a2b3c4d5e01
+            type: ADT
+            firstName: Ana
+            lastName: Pérez
+            dateOfBirth: '1990-04-12'
+        segments:
+          - id: 5a0e1d2c-7b3f-4e8a-9c6d-000000000001
+            operatingAirline: AV
+            flightNumber: '26'
+            origin: BOG
+            destination: MAD
+            departureAt: '2026-11-20T19:05:00'
+            arrivalAt: '2026-11-21T11:40:00'
+            status: HK
+          - id: 5a0e1d2c-7b3f-4e8a-9c6d-000000000002
+            operatingAirline: IB
+            flightNumber: '3234'
+            origin: MAD
+            destination: FCO
+            departureAt: '2026-11-21T13:15:00'
+            arrivalAt: '2026-11-21T15:45:00'
+            status: HK
+        payments:
+          - id: 9c1d2e3f-4a5b-4c6d-8e7f-000000000001
+            method: CASH
+            cash:
+              amount: 1849.60
+              currency: USD
+            status: CAPTURED
+            createdAt: '2026-11-01T15:20:11Z'
+        tickets:
+          - number: '1342412345678'
+            passengerId: 0b6f7c1e-3d2a-4c55-8f0e-1a2b3c4d5e01
+            issuedAt: '2026-11-01T15:21:40Z'
+        statusHistory:
+          - to: DRAFT
+            at: '2026-11-01T15:12:03Z'
+          - from: DRAFT
+            to: PRICED
+            at: '2026-11-01T15:12:03Z'
+          - from: PRICED
+            to: HELD
+            at: '2026-11-01T15:12:04Z'
+          - from: HELD
+            to: PAYMENT_AUTHORIZED
+            at: '2026-11-01T15:20:11Z'
+          - from: PAYMENT_AUTHORIZED
+            to: TICKETED
+            at: '2026-11-01T15:21:40Z'
+        availableActions: []
+        createdAt: '2026-11-01T15:12:03Z'
+        updatedAt: '2026-11-01T15:21:40Z'

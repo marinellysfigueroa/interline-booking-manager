@@ -1,0 +1,24 @@
+{
+  "name": "Flight offers sin token válido",
+  "priority": 8,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v2/shopping/flight-offers"
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "Content-Type": "application/vnd.amadeus+json"
+    },
+    "jsonBody": {
+      "errors": [
+        {
+          "status": 401,
+          "code": 38190,
+          "title": "Invalid access token",
+          "detail": "The access token provided in the Authorization header is invalid"
+        }
+      ]
+    }
+  }
+}

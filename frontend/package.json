@@ -6,7 +6,11 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "test:ci": "ng test --watch=false",
+    "e2e": "playwright test",
+    "api:types": "npx --yes openapi-typescript@7.13.0 ../api/openapi.yaml -o src/app/core/api/schema.d.ts && prettier --write src/app/core/api/schema.d.ts",
+    "lint:format": "prettier --check \"src/**/*.{ts,html,scss}\" \"e2e/**/*.ts\""
   },
   "private": true,
   "packageManager": "npm@11.19.0",
@@ -24,9 +28,13 @@
     "@angular/build": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.0",
+    "@playwright/test": "1.56.1",
     "jsdom": "^30.0.0",
     "prettier": "^3.8.1",
     "typescript": "~6.0.2",
     "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22.22.3 <23 || >=24.15.0"
   }
 }

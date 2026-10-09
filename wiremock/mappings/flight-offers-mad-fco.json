@@ -1,0 +1,40 @@
+{
+  "name": "Flight offers MAD-FCO",
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v2/shopping/flight-offers",
+    "headers": {
+      "Authorization": {
+        "equalTo": "Bearer wiremock-access-token"
+      }
+    },
+    "queryParameters": {
+      "originLocationCode": {
+        "equalTo": "MAD"
+      },
+      "destinationLocationCode": {
+        "equalTo": "FCO"
+      },
+      "adults": {
+        "matches": "[1-9]"
+      },
+      "currencyCode": {
+        "matches": "[A-Z]{3}"
+      },
+      "returnDate": {
+        "absent": true
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/vnd.amadeus+json"
+    },
+    "bodyFileName": "flight-offers-mad-fco.json",
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

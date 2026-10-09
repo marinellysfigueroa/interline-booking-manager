@@ -1,0 +1,40 @@
+{
+  "name": "Flight offers LIM-MIA",
+  "priority": 5,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v2/shopping/flight-offers",
+    "headers": {
+      "Authorization": {
+        "equalTo": "Bearer wiremock-access-token"
+      }
+    },
+    "queryParameters": {
+      "originLocationCode": {
+        "equalTo": "LIM"
+      },
+      "destinationLocationCode": {
+        "equalTo": "MIA"
+      },
+      "adults": {
+        "matches": "[1-9]"
+      },
+      "currencyCode": {
+        "matches": "[A-Z]{3}"
+      },
+      "returnDate": {
+        "absent": true
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/vnd.amadeus+json"
+    },
+    "bodyFileName": "flight-offers-lim-mia.json",
+    "transformers": [
+      "response-template"
+    ]
+  }
+}

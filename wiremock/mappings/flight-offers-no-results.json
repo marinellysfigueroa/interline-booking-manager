@@ -1,0 +1,25 @@
+{
+  "name": "Flight offers ruta sin vuelos",
+  "priority": 7,
+  "request": {
+    "method": "GET",
+    "urlPath": "/v2/shopping/flight-offers",
+    "headers": {
+      "Authorization": {
+        "equalTo": "Bearer wiremock-access-token"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/vnd.amadeus+json"
+    },
+    "jsonBody": {
+      "meta": {
+        "count": 0
+      },
+      "data": []
+    }
+  }
+}

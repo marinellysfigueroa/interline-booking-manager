@@ -1,0 +1,296 @@
+# =============================================================================
+# CI/CD de la aplicación.
+#
+#   PR y push:  contrato · backend · frontend · análisis estático · CodeQL · imágenes + e2e
+#   push main:  + publicación en Artifact Registry + despliegue en Cloud Run + smoke test
+#
+# Autenticación en GCP con Workload Identity Federation (token OIDC de GitHub ↔ credenciales
+# efímeras): no hay llaves JSON ni GitHub secrets. Los identificadores (no secretos) son
+# variables del repositorio; los crea el stack infra/terraform/bootstrap.
+# =============================================================================
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      backend_variant:
+        description: Imagen del backend a construir y desplegar
+        type: choice
+        options: [jvm, native]
+        default: jvm
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/interline
+  SERVICE_PREFIX: interline-${{ vars.GCP_ENVIRONMENT || 'prod' }}
+  BACKEND_VARIANT: ${{ inputs.backend_variant || 'jvm' }}
+
+jobs:
+  # ---------------------------------------------------------------- contrato
+  contract:
+    name: Contrato OpenAPI
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/.nvmrc
+      - name: Lint del contrato (Redocly)
+        run: npx --yes @redocly/cli@2.60.0 lint api/openapi.yaml --config api/redocly.yaml
+
+  # ---------------------------------------------------------------- backend
+  backend:
+    name: Backend (Quarkus)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # Dev Services usa el Docker del runner para PostgreSQL y WireMock
+      - name: Pruebas (dominio, ArchUnit, @QuarkusTest)
+        working-directory: backend
+        run: ./mvnw -B -ntp verify
+      - name: Informes de pruebas
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: backend/target/surefire-reports/
+
+  # ---------------------------------------------------------------- frontend
+  frontend:
+    name: Frontend (Angular)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Los tipos generados coinciden con el contrato
+        run: npm run api:types && git diff --exit-code -- src/app/core/api/schema.d.ts
+      - name: Formato (Prettier)
+        run: npm run lint:format
+      - name: Pruebas unitarias (Vitest)
+        run: npm run test:ci
+      - name: Build de producción (strict + strictTemplates)
+        run: npm run build
+
+  # ---------------------------------------------------------------- análisis estático
+  static-analysis:
+    name: Análisis estático (IaC, Dockerfiles, workflows)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: actionlint
+        uses: docker://mirror.gcr.io/rhysd/actionlint:1.7.12
+        with:
+          args: -color
+      - name: hadolint
+        run: |
+          for f in backend/Dockerfile backend/Dockerfile.native frontend/Dockerfile wiremock/Dockerfile; do
+            echo "::group::$f"
+            docker run --rm -i -v "$PWD/.hadolint.yaml:/.config/hadolint.yaml:ro" \
+              mirror.gcr.io/hadolint/hadolint:v2.12.0 hadolint --config /.config/hadolint.yaml - < "$f"
+            echo "::endgroup::"
+          done
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.5
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra/terraform
+      - name: terraform validate + test (providers simulados, sin credenciales)
+        run: |
+          for stack in bootstrap app; do
+            echo "::group::$stack"
+            terraform -chdir=infra/terraform/$stack init -backend=false -input=false
+            terraform -chdir=infra/terraform/$stack validate
+            terraform -chdir=infra/terraform/$stack test
+            echo "::endgroup::"
+          done
+      - uses: terraform-linters/setup-tflint@v4
+      - name: tflint
+        run: |
+          for stack in bootstrap app; do
+            (cd infra/terraform/$stack && tflint --config=../.tflint.hcl)
+          done
+      - name: Trivy (configuración insegura en Terraform, Dockerfiles y compose)
+        # Imagen fijada en vez de aquasecurity/trivy-action: misma versión que en local
+        # y sin depender del esquema de tags de la action.
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src mirror.gcr.io/aquasec/trivy:0.67.2 \
+            config --severity HIGH,CRITICAL --exit-code 1 .
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [java-kotlin, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+
+  # ---------------------------------------------------------------- imágenes + e2e
+  images:
+    name: Imágenes, escaneo y e2e
+    needs: [contract, backend, frontend]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # WIF (solo se usa en push a main)
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend (${{ env.BACKEND_VARIANT }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ env.BACKEND_VARIANT == 'native' && 'backend/Dockerfile.native' || 'backend/Dockerfile' }}
+          tags: interline-backend:local
+          load: true
+          cache-from: type=gha,scope=backend-${{ env.BACKEND_VARIANT }}
+          cache-to: type=gha,mode=max,scope=backend-${{ env.BACKEND_VARIANT }}
+      - name: Build frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          tags: interline-frontend:local
+          load: true
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      - name: Build sandbox del proveedor
+        uses: docker/build-push-action@v6
+        with:
+          context: wiremock
+          tags: interline-provider-sandbox:local
+          load: true
+
+      - name: Trivy (vulnerabilidades en las imágenes)
+        run: |
+          for image in interline-backend:local interline-frontend:local; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              mirror.gcr.io/aquasec/trivy:0.67.2 image --severity CRITICAL --ignore-unfixed --exit-code 1 "$image"
+          done
+
+      - name: Levantar el stack (docker compose con las imágenes recién construidas)
+        run: |
+          cp .env.example .env
+          docker compose up -d --no-build
+          timeout 180 bash -c 'until curl -fs "http://localhost:4200/api/v1/airports?query=mad" >/dev/null; do sleep 3; done'
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: E2E (Playwright contra el stack)
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:4200
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run e2e
+      - name: Diagnóstico del e2e
+        if: failure()
+        run: docker compose logs --no-color > compose.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-diagnostics
+          path: |
+            frontend/playwright-report/
+            compose.log
+
+      # --- Publicación (solo main) ---
+      - name: Autenticación en GCP (Workload Identity Federation)
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - name: Push a Artifact Registry
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+          for pair in "interline-backend:local backend" "interline-frontend:local frontend" "interline-provider-sandbox:local provider-sandbox"; do
+            read -r local_image name <<< "$pair"
+            docker tag "$local_image" "$REGISTRY/$name:$TAG"
+            docker push "$REGISTRY/$name:$TAG"
+          done
+
+  # ---------------------------------------------------------------- despliegue
+  deploy:
+    name: Despliegue en Cloud Run
+    needs: [images, static-analysis, codeql]
+    # Sin las variables de GCP (bootstrap aún no aplicado) CI termina en verde sin desplegar.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: ${{ steps.smoke.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Desplegar sandbox, backend y frontend (en ese orden)
+        env:
+          TAG: ${{ needs.images.outputs.tag }}
+          REGION: ${{ vars.GCP_REGION }}
+        run: |
+          deploy() {
+            gcloud run services update "$SERVICE_PREFIX-$1" --region "$REGION" --image "$REGISTRY/$2:$TAG" --quiet
+          }
+          if gcloud run services describe "$SERVICE_PREFIX-provider-sandbox" --region "$REGION" >/dev/null 2>&1; then
+            deploy provider-sandbox provider-sandbox
+          fi
+          deploy backend backend
+          deploy frontend frontend
+      - name: Smoke test
+        id: smoke
+        env:
+          REGION: ${{ vars.GCP_REGION }}
+        run: |
+          url=$(gcloud run services describe "$SERVICE_PREFIX-frontend" --region "$REGION" --format 'value(status.url)')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          curl -fsS "$url/healthz"
+          curl -fsS "$url/api/v1/airports?query=mad" | grep -q '"MAD"'
+          curl -fsS -o /dev/null "$url/config/runtime-config.json"
+          echo "Desplegado: $url" >> "$GITHUB_STEP_SUMMARY"

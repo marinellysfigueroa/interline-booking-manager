@@ -1,0 +1,20 @@
+{
+  "name": "OAuth2 credenciales inválidas",
+  "priority": 10,
+  "request": {
+    "method": "POST",
+    "url": "/v1/security/oauth2/token"
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": "invalid_client",
+      "error_description": "Client credentials are invalid",
+      "code": 38187,
+      "title": "Invalid parameters"
+    }
+  }
+}

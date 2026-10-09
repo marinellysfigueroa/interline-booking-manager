@@ -1,0 +1,36 @@
+{
+  "apiBaseUrl": "",
+  "defaultTenant": "AV",
+  "themes": [
+    {
+      "tenant": "AV",
+      "name": "Aerolíneas Cóndor",
+      "tagline": "Un solo ticket de los Andes a Europa",
+      "logo": "themes/condor.svg",
+      "colors": {
+        "primary": "#0f766e",
+        "primaryContrast": "#ffffff",
+        "accent": "#f59e0b",
+        "surface": "#ffffff",
+        "background": "#f0fdfa",
+        "text": "#0f172a",
+        "muted": "#64748b"
+      }
+    },
+    {
+      "tenant": "LA",
+      "name": "Pacífico Air",
+      "tagline": "Conectamos el Pacífico con el mundo",
+      "logo": "themes/pacifico.svg",
+      "colors": {
+        "primary": "#3730a3",
+        "primaryContrast": "#ffffff",
+        "accent": "#f97316",
+        "surface": "#ffffff",
+        "background": "#eef2ff",
+        "text": "#111827",
+        "muted": "#6b7280"
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+project_id        = "my-gcp-project"
+region            = "us-central1"
+github_repository = "marinellysfigueroa/interline-booking-manager"
+deploy_branch     = "main"

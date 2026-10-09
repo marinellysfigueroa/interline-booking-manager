@@ -16,6 +16,12 @@
         <quarkus.platform.version>3.40.1</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
+        <openapi-generator.version>7.26.0</openapi-generator.version>
+        <assertj.version>3.27.7</assertj.version>
+        <archunit.version>1.4.2</archunit.version>
+        <quarkus-wiremock.version>1.8.1</quarkus-wiremock.version>
+        <!-- Contrato OpenAPI (fuente única de verdad, compartido con el frontend) -->
+        <openapi.contract>${project.basedir}/../api/openapi.yaml</openapi.contract>
     </properties>
 
     <dependencyManagement>
@@ -79,15 +85,132 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>
+        <!--
+          Dev Service de WireMock: en dev y test arranca WireMock con los stubs de /wiremock
+          (el contrato estilo Amadeus). No se empaqueta en el artefacto (scope provided).
+        -->
+        <dependency>
+            <groupId>io.quarkiverse.wiremock</groupId>
+            <artifactId>quarkus-wiremock</artifactId>
+            <version>${quarkus-wiremock.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- OIDC preparado (desactivado en dev/test); equivale a spring-boot-starter-oauth2-resource-server -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-oidc</artifactId>
+        </dependency>
+        <!-- Logs JSON en prod (equivale a logstash-logback-encoder) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-logging-json</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- @InjectMock: equivale a @MockBean / @MockitoBean de Spring -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit-mockito</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- @ConnectWireMock: cliente WireMock inyectado en las pruebas para stubs de fallos -->
+        <dependency>
+            <groupId>io.quarkiverse.wiremock</groupId>
+            <artifactId>quarkus-wiremock-test</artifactId>
+            <version>${quarkus-wiremock.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Verifica las reglas de la arquitectura hexagonal en cada build -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!--
+              Contract-first: el contrato de /api se publica tal cual como
+              META-INF/openapi.yaml, que SmallRye OpenAPI sirve en /openapi y
+              Swagger UI. (En Spring sería springdoc con un static spec.)
+            -->
+            <resource>
+                <directory>${project.basedir}/../api</directory>
+                <targetPath>META-INF</targetPath>
+                <includes>
+                    <include>openapi.yaml</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
+            <!--
+              Genera desde el contrato las interfaces JAX-RS (un interface por
+              tag) y los DTO con anotaciones de Bean Validation. Los recursos
+              REST de infraestructura las implementan: si el contrato cambia y
+              la implementación no, el build falla.
+            -->
+            <plugin>
+                <groupId>org.openapitools</groupId>
+                <artifactId>openapi-generator-maven-plugin</artifactId>
+                <version>${openapi-generator.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-rest-api</id>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputSpec>${openapi.contract}</inputSpec>
+                            <generatorName>jaxrs-spec</generatorName>
+                            <apiPackage>com.insightdevelop.interline.infrastructure.rest.api</apiPackage>
+                            <modelPackage>com.insightdevelop.interline.infrastructure.rest.dto</modelPackage>
+                            <modelNameSuffix>Dto</modelNameSuffix>
+                            <generateSupportingFiles>false</generateSupportingFiles>
+                            <generateApiTests>false</generateApiTests>
+                            <generateModelTests>false</generateModelTests>
+                            <generateApiDocumentation>false</generateApiDocumentation>
+                            <generateModelDocumentation>false</generateModelDocumentation>
+                            <configOptions>
+                                <interfaceOnly>true</interfaceOnly>
+                                <returnResponse>true</returnResponse>
+                                <useTags>true</useTags>
+                                <useJakartaEe>true</useJakartaEe>
+                                <useBeanValidation>true</useBeanValidation>
+                                <useSwaggerAnnotations>false</useSwaggerAnnotations>
+                                <useMicroProfileOpenAPIAnnotations>false</useMicroProfileOpenAPIAnnotations>
+                                <dateLibrary>java8</dateLibrary>
+                                <openApiNullable>false</openApiNullable>
+                                <sourceFolder>src/gen/java</sourceFolder>
+                                <hideGenerationTimestamp>true</hideGenerationTimestamp>
+                                <!--
+                                  Los recursos devuelven Response, así que Quarkus no puede deducir qué DTO
+                                  registrar para reflexión en nativo: se anotan todos al generarlos.
+                                -->
+                                <additionalModelTypeAnnotations>@io.quarkus.runtime.annotations.RegisterForReflection</additionalModelTypeAnnotations>
+                            </configOptions>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>${quarkus.platform.group-id}</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>

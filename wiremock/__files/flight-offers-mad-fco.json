@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "count": 2
+  },
+  "data": [
+    {
+      "type": "flight-offer",
+      "id": "1",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT2H30M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "MAD",
+                "at": "{{request.query.departureDate}}T13:15:00"
+              },
+              "arrival": {
+                "iataCode": "FCO",
+                "at": "{{request.query.departureDate}}T15:45:00"
+              },
+              "carrierCode": "IB",
+              "number": "3234",
+              "operating": {
+                "carrierCode": "IB"
+              },
+              "duration": "PT2H30M",
+              "id": "1",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 160.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 16.00 '*' request.query.infants)}}",
+        "base": "{{math (math 160.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 16.00 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 160.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 16.00 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "IB"
+      ],
+      "travelerPricings": []
+    },
+    {
+      "type": "flight-offer",
+      "id": "2",
+      "source": "GDS",
+      "instantTicketingRequired": false,
+      "lastTicketingDate": "{{request.query.departureDate}}",
+      "numberOfBookableSeats": 9,
+      "itineraries": [
+        {
+          "duration": "PT2H30M",
+          "segments": [
+            {
+              "departure": {
+                "iataCode": "MAD",
+                "at": "{{request.query.departureDate}}T17:20:00"
+              },
+              "arrival": {
+                "iataCode": "FCO",
+                "at": "{{request.query.departureDate}}T19:50:00"
+              },
+              "carrierCode": "AZ",
+              "number": "61",
+              "operating": {
+                "carrierCode": "AZ"
+              },
+              "duration": "PT2H30M",
+              "id": "2",
+              "numberOfStops": 0
+            }
+          ]
+        }
+      ],
+      "price": {
+        "currency": "{{request.query.currencyCode}}",
+        "total": "{{math (math 145.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 14.50 '*' request.query.infants)}}",
+        "base": "{{math (math 145.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 14.50 '*' request.query.infants)}}",
+        "grandTotal": "{{math (math 145.00 '*' (math request.query.adults '+' request.query.children)) '+' (math 14.50 '*' request.query.infants)}}"
+      },
+      "validatingAirlineCodes": [
+        "AZ"
+      ],
+      "travelerPricings": []
+    }
+  ]
+}
