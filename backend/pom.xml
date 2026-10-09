@@ -18,7 +18,7 @@
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
         <openapi-generator.version>7.26.0</openapi-generator.version>
         <assertj.version>3.27.7</assertj.version>
-        <archunit.version>1.4.2</archunit.version>
+        <archunit.version>1.5.1</archunit.version>
         <quarkus-wiremock.version>1.8.1</quarkus-wiremock.version>
         <!-- Contrato OpenAPI (fuente única de verdad, compartido con el frontend) -->
         <openapi.contract>${project.basedir}/../api/openapi.yaml</openapi.contract>
