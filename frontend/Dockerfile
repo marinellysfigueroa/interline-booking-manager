@@ -36,4 +36,4 @@ ENV PORT=8080 \
 EXPOSE 8080
 # Usuario nginx (UID 101), sin privilegios: escucha en un puerto > 1024.
 USER 101
-HEALTHCHECK --interval=15s --timeout=3s --retries=3 CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/healthz" || exit 1
+HEALTHCHECK --interval=15s --timeout=3s --retries=3 CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/health" || exit 1

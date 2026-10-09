@@ -60,6 +60,9 @@ Federation) y **ningún secreto en el repositorio ni en el state de Terraform**.
   usando el SHA del commit como tag.
 - Las sondas (`startup` en `/q/health/started`, `liveness` en `/q/health/live` y
   `/healthz`) responden también con la imagen inicial, así que el primer apply no falla.
+- Desde fuera se usa `/health`: el front end de Google en Cloud Run reserva algunas rutas
+  terminadas en `z` y responde 404 a `/healthz` sin llegar al contenedor (lo destapó el primer
+  smoke test real). Las sondas internas no pasan por ese front end y siguen en `/healthz`.
 - Artifact Registry tiene **tags inmutables** y políticas de limpieza: conserva las 15
   imágenes más recientes y borra el resto pasados 30 días.
 - Logs: `QUARKUS_LOG_CONSOLE_JSON_LOG_FORMAT=gcp`. Quarkus 3.40 emite directamente el formato
@@ -107,7 +110,7 @@ cambió por claves estáticas.
 7. Solo en `main`:
    - WIF y push a Artifact Registry;
    - despliegue en el orden sandbox → backend → frontend, en el environment `production`;
-   - smoke test (`/healthz`, `/api/v1/airports`, configuración runtime).
+   - smoke test (`/health`, `/api/v1/airports`, configuración runtime).
 
 **`workflow_dispatch`** con `backend_variant: native` construye y despliega el backend
 nativo.

@@ -91,7 +91,7 @@ de Artifact Registry.
     `angular.json`: el critical CSS inyectaba un `<script>` inline.
   - `style-src` necesita `'unsafe-inline'` porque Angular inserta los estilos de los
     componentes como `<style>`.
-- `HEALTHCHECK` con `wget` a `/healthz`. La configuración white-label se cambia montando
+- `HEALTHCHECK` con `wget` a `/health`. La configuración white-label se cambia montando
   otro `runtime-config.json`, sin reconstruir.
 
 ### D6. Secretos de build opcionales (redes corporativas)
