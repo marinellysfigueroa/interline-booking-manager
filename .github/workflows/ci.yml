@@ -132,12 +132,11 @@ jobs:
             (cd infra/terraform/$stack && tflint --config=../.tflint.hcl)
           done
       - name: Trivy (configuración insegura en Terraform, Dockerfiles y compose)
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          scan-type: config
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: "1"
+        # Imagen fijada en vez de aquasecurity/trivy-action: misma versión que en local
+        # y sin depender del esquema de tags de la action.
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src mirror.gcr.io/aquasec/trivy:0.67.2 \
+            config --severity HIGH,CRITICAL --exit-code 1 .
 
   codeql:
     name: CodeQL (${{ matrix.language }})
