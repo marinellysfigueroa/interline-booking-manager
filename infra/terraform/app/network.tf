@@ -29,4 +29,10 @@ resource "google_service_networking_connection" "private_services" {
   network                 = google_compute_network.main.id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_services.name]
+
+  # En un destroy, Cloud SQL tarda en soltar el peering aunque la instancia ya esté borrada y el
+  # borrado falla con "Producer services ... are still using this connection". ABANDON lo saca del
+  # state sin borrarlo; el peering desaparece con la VPC (o con gcloud). Equivale al
+  # "terraform state rm" manual.
+  deletion_policy = "ABANDON"
 }
