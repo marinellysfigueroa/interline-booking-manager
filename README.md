@@ -181,9 +181,12 @@ terraform -chdir=infra/terraform/app init -backend=false && terraform -chdir=inf
 ### Probar la saga con compensación
 
 ```bash
-cd backend && ./mvnw quarkus:dev -Dapp.simulated.inventory.never-confirm-carriers=IB
+cd backend && ./mvnw quarkus:dev '-D%dev.app.simulated.inventory.never-confirm-carriers=IB'
 # Reserva BOG → FCO (AV + IB), paga y emite → 422 SEGMENT_NOT_CONFIRMED, reserva FAILED,
 # segmentos XX y pago RELEASED.
+# El prefijo %dev limita el fallo simulado al perfil dev: las pruebas continuas (tecla "r")
+# corren en la misma JVM con el perfil test y siguen viendo que IB confirma. Sin el prefijo,
+# la propiedad de sistema se aplica también a ellas y el flujo feliz falla.
 ```
 
 ### Flujo con `curl`
