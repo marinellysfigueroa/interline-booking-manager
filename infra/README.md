@@ -74,6 +74,24 @@ terraform init -backend-config=backend.hcl
 terraform plan -out tfplan && terraform apply tfplan
 ```
 
+## Destruir el stack app
+
+```bash
+cd infra/terraform/app            # con backend.hcl y terraform.tfvars como en el apartado anterior
+terraform init -backend-config=backend.hcl
+terraform apply   -var db_deletion_protection=false -var deletion_protection=false   # solo quita protecciones
+terraform destroy -var db_deletion_protection=false -var deletion_protection=false
+```
+
+- Antes, borra la variable `GCP_WIF_PROVIDER` del repositorio para que CI deje de desplegar.
+- La subred puede tardar **1–2 horas** en poder borrarse: Cloud Run (Direct VPC egress) reserva
+  IPs `serverless-ipv4-*` en ella y Google las libera de forma asíncrona. Si el destroy falla con
+  `resourceInUseByAnotherResource`, espera hasta que
+  `gcloud compute addresses list --filter="name~serverless-ipv4"` salga vacío y repite.
+  Lo que queda mientras tanto (VPC, subred, rango reservado) no tiene coste.
+- La conexión de Service Networking tiene `deletion_policy = "ABANDON"`: Terraform no espera a que
+  Cloud SQL suelte el peering, que se borra junto con la VPC.
+
 ## Validación sin credenciales
 
 ```bash
