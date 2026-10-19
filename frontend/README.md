@@ -1,6 +1,6 @@
 # Frontend — Interline Booking Manager
 
-Angular 22 (standalone, signals, zoneless, OnPush). Ver el [README raíz](../README.md) y el
+Angular 22 (standalone, signals, zoneless, OnPush). Ver el [README raíz](../README.es.md) y el
 [ADR 0004](../docs/adr/0004-fase-4-frontend-angular.md).
 
 ```bash

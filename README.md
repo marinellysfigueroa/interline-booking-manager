@@ -1,98 +1,100 @@
 # Interline Booking Manager
 
-Gestión de reservas con itinerarios de varias aerolíneas emitidos en **un solo ticket**
-(*interline*), inspirada en las plataformas white-label que usan las aerolíneas para vender en
-su propia marca.
+*English · [Español](README.es.md)*
+
+Booking management for itineraries that span several airlines issued on **a single ticket**
+(*interline*), inspired by the white-label platforms airlines use to sell under their own
+brand.
 
 **Quarkus 3.40 LTS (Java 21) · Angular 22 · PostgreSQL 17 · Cloud Run · Terraform · GitHub Actions**
 
-- **Regla central:** solo se emite un ticket único si la aerolínea validadora tiene acuerdo
-  interline con todas las operadoras.
-- **Saga orquestada con compensación:** si un segmento sigue sin confirmar (UC) tras los
-  reintentos, se cancelan los segmentos, se libera el pago o el hold de millas y la reserva
-  pasa a `FAILED`.
-- **Contract-first:** un contrato OpenAPI del que salen las interfaces JAX-RS del backend y los
-  tipos TypeScript del frontend.
-- **Proveedor de vuelos estilo Amadeus** servido por WireMock, con resiliencia completa
-  (timeout, retry con backoff, circuit breaker y fallback).
-- **White-label en runtime:** colores, logo y nombre por aerolínea desde un JSON, sin
-  recompilar.
+- **Core rule:** a single ticket is issued only if the validating carrier has an interline
+  agreement with every operating carrier.
+- **Orchestrated saga with compensation:** if a segment is still unconfirmed (UC) after the
+  retries, the segments are cancelled, the payment or miles hold is released and the booking
+  moves to `FAILED`.
+- **Contract-first:** one OpenAPI contract generates both the backend JAX-RS interfaces and the
+  frontend TypeScript types.
+- **Amadeus-style flight provider** served by WireMock, with full resilience (timeout, retry
+  with backoff, circuit breaker and fallback).
+- **Runtime white-label:** colors, logo and name per airline from a JSON file, no rebuild
+  needed.
 
-> Datos de demostración: aerolíneas, vuelos, tarifas y acuerdos interline son **ficticios**.
-> Las marcas del frontend («Aerolíneas Cóndor», «Pacífico Air») son inventadas.
+> Demo data: airlines, flights, fares and interline agreements are **fictitious**.
+> The frontend brands ("Aerolíneas Cóndor", "Pacífico Air") are made up.
 
-## Arquitectura
+## Architecture
 
-### Sistema
+### System
 
 ```mermaid
 flowchart LR
-  subgraph cliente[Navegador]
-    spa["SPA Angular<br/>signals · OnPush · zoneless"]
+  subgraph client[Browser]
+    spa["Angular SPA<br/>signals · OnPush · zoneless"]
   end
   subgraph run[Cloud Run]
-    nginx["frontend · nginx<br/>estáticos + proxy /api"]
-    api["backend · Quarkus<br/>JVM o nativo"]
-    sbx["provider-sandbox<br/>WireMock (contrato estilo Amadeus)"]
+    nginx["frontend · nginx<br/>static files + /api proxy"]
+    api["backend · Quarkus<br/>JVM or native"]
+    sbx["provider-sandbox<br/>WireMock (Amadeus-style contract)"]
   end
-  db[("Cloud SQL<br/>PostgreSQL 17 · IP privada")]
+  db[("Cloud SQL<br/>PostgreSQL 17 · private IP")]
   sm[[Secret Manager]]
 
   spa -->|HTTPS| nginx
-  nginx -->|"/api · VPC (ingress interno)"| api
+  nginx -->|"/api · VPC (internal ingress)"| api
   api -->|"JDBC · TLS"| db
   api -->|"OAuth2 + REST Client<br/>Fault Tolerance"| sbx
-  sm -. "secretos como env" .-> api
+  sm -. "secrets as env vars" .-> api
 ```
 
-En local, `docker compose` levanta lo mismo: nginx → Quarkus → PostgreSQL, con WireMock como
-proveedor.
+Locally, `docker compose` brings up the same thing: nginx → Quarkus → PostgreSQL, with WireMock
+as the provider.
 
-### Backend hexagonal
+### Hexagonal backend
 
 ```mermaid
 flowchart TB
-  subgraph infra[infrastructure · adaptadores]
-    rest["REST (Quarkus REST)<br/>interfaces generadas del contrato<br/>Problem Details · idempotencia · correlación"]
-    pers["Persistencia<br/>Hibernate ORM + Panache · Flyway"]
-    prov["Proveedor de vuelos<br/>amadeus-style (REST Client + FT) · simulated"]
-    gw["Gateways simulados<br/>inventario · pagos · millas"]
+  subgraph infra[infrastructure · adapters]
+    rest["REST (Quarkus REST)<br/>interfaces generated from the contract<br/>Problem Details · idempotency · correlation"]
+    pers["Persistence<br/>Hibernate ORM + Panache · Flyway"]
+    prov["Flight provider<br/>amadeus-style (REST Client + FT) · simulated"]
+    gw["Simulated gateways<br/>inventory · payments · miles"]
   end
-  subgraph app[application · casos de uso]
+  subgraph app[application · use cases]
     uc["CreateBooking · AuthorizePayment<br/>TicketingSaga · Cancel · Queries"]
   end
-  subgraph dom[domain · Java puro]
-    model["Booking (agregado) · BookingStatus<br/>InterlineTicketingPolicy · PassengerManifest"]
-    ports["Puertos: FlightOffersProvider · BookingRepository<br/>SegmentInventoryGateway · PaymentGateway · LoyaltyGateway"]
+  subgraph dom[domain · plain Java]
+    model["Booking (aggregate) · BookingStatus<br/>InterlineTicketingPolicy · PassengerManifest"]
+    ports["Ports: FlightOffersProvider · BookingRepository<br/>SegmentInventoryGateway · PaymentGateway · LoyaltyGateway"]
   end
   rest --> uc
   uc --> model
   uc --> ports
-  pers -. implementa .-> ports
-  prov -. implementa .-> ports
-  gw -. implementa .-> ports
+  pers -. implements .-> ports
+  prov -. implements .-> ports
+  gw -. implements .-> ports
 ```
 
-ArchUnit hace cumplir estas reglas en cada build:
+ArchUnit enforces these rules on every build:
 
-- el dominio no importa Jakarta, Quarkus, Hibernate ni Jackson;
-- no hay ciclos entre paquetes;
-- los DTO no salen del adaptador REST;
-- las entidades JPA no salen de infraestructura.
+- the domain does not import Jakarta, Quarkus, Hibernate or Jackson;
+- there are no cycles between packages;
+- DTOs do not leave the REST adapter;
+- JPA entities do not leave infrastructure.
 
-### Máquina de estados de la reserva
+### Booking state machine
 
 ```mermaid
 stateDiagram-v2
   [*] --> DRAFT
-  DRAFT --> PRICED: tarifa confirmada
-  PRICED --> HELD: segmentos solicitados (HK/UC)
-  HELD --> PAYMENT_AUTHORIZED: pago CASH / MILES / MIXED
-  PAYMENT_AUTHORIZED --> TICKETED: saga de emisión
+  DRAFT --> PRICED: fare confirmed
+  PRICED --> HELD: segments requested (HK/UC)
+  HELD --> PAYMENT_AUTHORIZED: CASH / MILES / MIXED payment
+  PAYMENT_AUTHORIZED --> TICKETED: ticketing saga
   DRAFT --> FAILED
   PRICED --> FAILED
-  HELD --> FAILED: operadora rechaza (XX)
-  PAYMENT_AUTHORIZED --> FAILED: segmento UC tras reintentos
+  HELD --> FAILED: carrier rejects (XX)
+  PAYMENT_AUTHORIZED --> FAILED: segment UC after retries
   DRAFT --> CANCELLED
   PRICED --> CANCELLED
   HELD --> CANCELLED
@@ -102,94 +104,94 @@ stateDiagram-v2
   CANCELLED --> [*]
 ```
 
-### Saga de emisión (`POST /bookings/{locator}/ticket`)
+### Ticketing saga (`POST /bookings/{locator}/ticket`)
 
 ```mermaid
 sequenceDiagram
-  participant C as Cliente
+  participant C as Client
   participant S as TicketingSaga
-  participant I as Inventario (operadoras)
-  participant P as Pago / Millas
+  participant I as Inventory (carriers)
+  participant P as Payment / Miles
   participant DB as PostgreSQL
-  C->>S: emitir
-  S->>S: regla interline (422 sin cambios si falla)
-  loop por cada segmento UC (reintentos con backoff)
+  C->>S: ticket
+  S->>S: interline rule (422, no changes, if it fails)
+  loop for each UC segment (retries with backoff)
     S->>I: checkStatus
-    S->>DB: guardar estado (transacción corta)
+    S->>DB: save state (short transaction)
   end
-  alt todos HK
-    S->>P: capturar / redimir
+  alt all HK
+    S->>P: capture / redeem
     S->>DB: TICKETED + tickets
     S-->>C: 200
-  else sigue UC o XX
-    S->>I: cancelar segmentos activos
-    S->>P: liberar autorización / hold
+  else still UC or XX
+    S->>I: cancel active segments
+    S->>P: release authorization / hold
     S->>DB: FAILED
     S-->>C: 422 (locator, bookingStatus: FAILED)
   end
 ```
 
-- Cada paso es idempotente y el estado de la saga es el propio agregado: si el proceso cae,
-  basta con repetir la petición.
-- Las llamadas externas nunca se hacen dentro de una transacción de base de datos.
+- Every step is idempotent and the saga state is the aggregate itself: if the process dies,
+  repeating the request is enough.
+- External calls are never made inside a database transaction.
 
-## Estructura del repositorio
+## Repository layout
 
 ```
-api/            Contrato OpenAPI 3.0.3 (fuente única) + config de Redocly
+api/            OpenAPI 3.0.3 contract (single source of truth) + Redocly config
 backend/        Quarkus · domain / application / infrastructure · Dockerfile (JVM) · Dockerfile.native
-frontend/       Angular · flujo por pasos · gestión · white-label · Dockerfile (nginx) · e2e Playwright
-wiremock/       Contrato estilo Amadeus (mappings + __files) · Dockerfile del sandbox
-infra/          Terraform: bootstrap (WIF, state, cuentas de CI) y app (VPC, Cloud SQL, Cloud Run...)
-.github/        Workflows ci.yml (build/test/análisis/imágenes/deploy) e infra.yml (plan/apply)
-docs/adr/       Decisiones de arquitectura, una por fase
+frontend/       Angular · step-by-step flow · manage view · white-label · Dockerfile (nginx) · Playwright e2e
+wiremock/       Amadeus-style contract (mappings + __files) · sandbox Dockerfile
+infra/          Terraform: bootstrap (WIF, state, CI accounts) and app (VPC, Cloud SQL, Cloud Run...)
+.github/        Workflows ci.yml (build/test/analysis/images/deploy) and infra.yml (plan/apply)
+docs/adr/       Architecture decisions, one per phase (in Spanish)
 ```
 
-## Cómo correr en local
+## Running locally
 
-### Todo en Docker (solo hace falta Docker)
+### Everything in Docker (only Docker required)
 
 ```bash
 cp .env.example .env
 docker compose up --build
-# Frontend http://localhost:4200 (?tenant=LA para el otro tema) · Swagger http://localhost:8080/swagger-ui
+# Frontend http://localhost:4200 (?tenant=LA for the other theme) · Swagger http://localhost:8080/swagger-ui
 
-docker compose --profile observability up --build                        # + Jaeger en :16686
-BACKEND_DOCKERFILE=backend/Dockerfile.native docker compose up --build   # backend nativo (~10 min, ~6 GB RAM)
-E2E_BASE_URL=http://localhost:4200 npm --prefix frontend run e2e         # e2e contra el stack
+docker compose --profile observability up --build                        # + Jaeger on :16686
+BACKEND_DOCKERFILE=backend/Dockerfile.native docker compose up --build   # native backend (~10 min, ~6 GB RAM)
+E2E_BASE_URL=http://localhost:4200 npm --prefix frontend run e2e         # e2e against the stack
 ```
 
-### Desarrollo (Java 21, Node 24.15 y Docker)
+### Development (Java 21, Node 24.15 and Docker)
 
 ```bash
 cd backend && ./mvnw quarkus:dev
-# Dev Services levanta PostgreSQL y WireMock. Recarga en caliente, Dev UI en /q/dev-ui,
-# pruebas continuas pulsando "r".
+# Dev Services starts PostgreSQL and WireMock. Hot reload, Dev UI at /q/dev-ui,
+# continuous testing by pressing "r".
 
 cd frontend && npm ci && npm start          # http://localhost:4200 (proxy /api → :8080)
 ```
 
-### Pruebas
+### Tests
 
 ```bash
-cd backend  && ./mvnw verify       # 181: dominio, ArchUnit, @QuarkusTest (Dev Services), WireMock, resiliencia
-cd frontend && npm run test:ci     # 43: store, validadores, interceptors, reparto del pago mixto
-cd frontend && npm run e2e         # 3: Playwright, flujo feliz completo contra el stack real
+cd backend  && ./mvnw verify       # 181: domain, ArchUnit, @QuarkusTest (Dev Services), WireMock, resilience
+cd frontend && npm run test:ci     # 43: store, validators, interceptors, mixed-payment split
+cd frontend && npm run e2e         # 3: Playwright, full happy path against the real stack
 terraform -chdir=infra/terraform/app init -backend=false && terraform -chdir=infra/terraform/app test   # 5 (mocks)
 ```
 
-### Probar la saga con compensación
+### Trying the saga with compensation
 
 ```bash
 cd backend && ./mvnw quarkus:dev '-D%dev.app.simulated.inventory.never-confirm-carriers=IB'
-# Reserva BOG → FCO (AV + IB), paga y emite → 422 SEGMENT_NOT_CONFIRMED, reserva FAILED,
-# segmentos XX y pago RELEASED.
-# El prefijo %dev limita el fallo simulado al perfil dev: las pruebas continuas (tecla "r")
-# corren en la misma JVM con el perfil test y siguen viendo que IB confirma. Sin el prefijo,
-# la propiedad de sistema se aplica también a ellas y el flujo feliz falla.
+# Book BOG → FCO (AV + IB), pay and ticket → 422 SEGMENT_NOT_CONFIRMED, booking FAILED,
+# segments XX and payment RELEASED.
+# The %dev prefix limits the simulated failure to the dev profile: continuous tests ("r" key)
+# run in the same JVM with the test profile and still see IB confirming. Without the prefix,
+# the system property applies to them too and the happy path fails.
 ```
 
-### Flujo con `curl`
+### Flow with `curl`
 
 ```bash
 OFFER=$(curl -s localhost:8080/api/v1/offers/search -H 'Content-Type: application/json' \
@@ -208,135 +210,137 @@ curl -s localhost:8080/api/v1/bookings/$LOC/payments -H 'Content-Type: applicati
 curl -s -X POST localhost:8080/api/v1/bookings/$LOC/ticket | jq '{status, tickets}'
 ```
 
-## Cómo desplegar en GCP
+## Deploying to GCP
 
-La guía completa está en **[infra/README.md](infra/README.md)**. En resumen:
+The full guide (in Spanish) is in **[infra/README.md](infra/README.md)**. In short:
 
-1. `infra/terraform/bootstrap` (una vez, a mano): APIs, bucket del state, Workload Identity
-   Federation y cuentas de CI.
-2. Cargar las credenciales del proveedor con `gcloud secrets versions add ... --data-file=-`.
-3. Crear en GitHub las **variables** que devuelve el bootstrap y los environments
-   `infrastructure` y `production` con aprobación.
-4. Push a `main`. `infra.yml` aplica `infra/terraform/app` (VPC, Cloud SQL privado, Secret
-   Manager, Artifact Registry y Cloud Run) y `ci.yml` construye, prueba, analiza, publica y
-   despliega.
+1. `infra/terraform/bootstrap` (once, by hand): APIs, state bucket, Workload Identity
+   Federation and CI accounts.
+2. Load the provider credentials with `gcloud secrets versions add ... --data-file=-`.
+3. In GitHub, create the **variables** the bootstrap outputs, plus the `infrastructure` and
+   `production` environments with approval.
+4. Push to `main`. `infra.yml` applies `infra/terraform/app` (VPC, private Cloud SQL, Secret
+   Manager, Artifact Registry and Cloud Run) and `ci.yml` builds, tests, analyzes, publishes
+   and deploys.
 
-**Sin secretos:**
+**No secrets:**
 
-- la autenticación es por Workload Identity Federation (sin llaves JSON ni GitHub secrets);
-- la contraseña de la base de datos se genera como valor efímero y se escribe con argumentos
-  write-only, así que **no está en el state**, y `terraform test` lo comprueba;
-- el backend no es accesible desde internet: solo el frontend lo alcanza, por la VPC.
+- authentication uses Workload Identity Federation (no JSON keys, no GitHub secrets);
+- the database password is generated as an ephemeral value and written with write-only
+  arguments, so it is **not in the state**, and `terraform test` checks that;
+- the backend is not reachable from the internet: only the frontend reaches it, through the VPC.
 
 ### CI/CD
 
-| Workflow | Disparo | Qué hace |
+| Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | PR, push, manual | Contrato · backend · frontend (incluida la deriva de tipos) · actionlint · hadolint · terraform fmt/validate/test · tflint · Trivy (IaC e imágenes) · CodeQL · build de imágenes · **e2e contra docker compose** · en `main`: push a Artifact Registry, despliegue y smoke test. Con `backend_variant: native`, backend nativo |
-| `infra.yml` | PR / push en `infra/` | `terraform plan` (solo lectura) en PR; `plan` + `apply` con aprobación en `main` |
-| `dependabot.yml` | semanal | Acciones, Maven, npm, imágenes base y providers |
+| `ci.yml` | PR, push, manual | Contract · backend · frontend (including type drift) · actionlint · hadolint · terraform fmt/validate/test · tflint · Trivy (IaC and images) · CodeQL · image build · **e2e against docker compose** · on `main`: push to Artifact Registry, deploy and smoke test. With `backend_variant: native`, native backend |
+| `infra.yml` | PR / push under `infra/` | Read-only `terraform plan` on PRs; `plan` + `apply` with approval on `main` |
+| `dependabot.yml` | weekly | Actions, Maven, npm, base images and providers |
 
-## Decisiones (ADR)
+## Decisions (ADR)
 
-| ADR | Fase |
+The ADRs are written in Spanish.
+
+| ADR | Phase |
 | --- | --- |
-| [0001](docs/adr/0001-fase-1-estructura-contrato-dominio.md) | Monorepo, contract-first, dominio y máquina de estados |
-| [0002](docs/adr/0002-fase-2-persistencia-casos-de-uso-saga.md) | Persistencia, transacciones cortas, saga, idempotencia y Problem Details |
-| [0003](docs/adr/0003-fase-3-proveedor-estilo-amadeus.md) | Proveedor estilo Amadeus, WireMock, Fault Tolerance, hilos virtuales y Mutiny |
-| [0004](docs/adr/0004-fase-4-frontend-angular.md) | Angular: signal stores, guards, formularios, interceptors y white-label |
-| [0005](docs/adr/0005-fase-5-docker-compose.md) | Imágenes distroless, nativo, nginx y docker-compose |
-| [0006](docs/adr/0006-fase-6-gcp-terraform-cicd.md) | GCP con Terraform, WIF y pipeline |
+| [0001](docs/adr/0001-fase-1-estructura-contrato-dominio.md) | Monorepo, contract-first, domain and state machine |
+| [0002](docs/adr/0002-fase-2-persistencia-casos-de-uso-saga.md) | Persistence, short transactions, saga, idempotency and Problem Details |
+| [0003](docs/adr/0003-fase-3-proveedor-estilo-amadeus.md) | Amadeus-style provider, WireMock, Fault Tolerance, virtual threads and Mutiny |
+| [0004](docs/adr/0004-fase-4-frontend-angular.md) | Angular: signal stores, guards, forms, interceptors and white-label |
+| [0005](docs/adr/0005-fase-5-docker-compose.md) | Distroless images, native, nginx and docker-compose |
+| [0006](docs/adr/0006-fase-6-gcp-terraform-cicd.md) | GCP with Terraform, WIF and pipeline |
 
-## Quarkus para desarrolladores Spring
+## Quarkus for Spring developers
 
-Lo aprendido construyendo este proyecto viniendo de muchos años con Spring Boot.
+What I learned building this project after many years with Spring Boot.
 
-### Equivalencias que se usan en el código
+### Equivalents used in the code
 
-| Spring Boot | Quarkus | Dónde verlo |
+| Spring Boot | Quarkus | Where to see it |
 | --- | --- | --- |
-| `@Service`, `@Component`, `@Repository` | `@ApplicationScoped` (CDI). Los recursos REST son `@Singleton` por defecto | casos de uso en `application/` |
-| `@Configuration` + `@Bean` | métodos `@Produces` en cualquier bean | `DomainServicesProducer` |
-| `@Qualifier` / `@ConditionalOnProperty` | `@Identifier` + productor que elige en runtime; `@IfBuildProperty` existe pero se evalúa **al compilar** | `FlightOffersProviderProducer` |
-| `application-dev.yml`, `spring.profiles.active` | **un solo** `application.properties` con prefijos `%dev.`, `%test.`, `%prod.` (y combinados: `%dev,test.`) | `application.properties` |
-| `@ConfigurationProperties` | `@ConfigMapping` (una interfaz; SmallRye genera la implementación y valida al arrancar) | `SagaConfig`, `AmadeusStyleConfig` |
-| `JpaRepository` | `PanacheRepositoryBase<Entity, Id>`, sin consultas derivadas por nombre; HQL abreviado (`find("locator", x)`) | `*PanacheRepository` |
-| `@RestController` | interfaz JAX-RS (aquí generada del contrato) + clase que la implementa | `BookingsResource` |
+| `@Service`, `@Component`, `@Repository` | `@ApplicationScoped` (CDI). REST resources are `@Singleton` by default | use cases in `application/` |
+| `@Configuration` + `@Bean` | `@Produces` methods on any bean | `DomainServicesProducer` |
+| `@Qualifier` / `@ConditionalOnProperty` | `@Identifier` + a producer that chooses at runtime; `@IfBuildProperty` exists but is evaluated **at build time** | `FlightOffersProviderProducer` |
+| `application-dev.yml`, `spring.profiles.active` | **a single** `application.properties` with `%dev.`, `%test.`, `%prod.` prefixes (and combined: `%dev,test.`) | `application.properties` |
+| `@ConfigurationProperties` | `@ConfigMapping` (an interface; SmallRye generates the implementation and validates at startup) | `SagaConfig`, `AmadeusStyleConfig` |
+| `JpaRepository` | `PanacheRepositoryBase<Entity, Id>`, no derived queries by method name; shorthand HQL (`find("locator", x)`) | `*PanacheRepository` |
+| `@RestController` | JAX-RS interface (generated from the contract here) + a class that implements it | `BookingsResource` |
 | `@RestControllerAdvice` + `@ExceptionHandler` | `@ServerExceptionMapper` | `ProblemExceptionMappers` |
 | `OncePerRequestFilter` | `@ServerRequestFilter` / `@ServerResponseFilter` | `CorrelationIdFilter` |
 | OpenFeign / `@HttpExchange` | MicroProfile REST Client (`@RegisterRestClient`) | `AmadeusFlightOffersClient` |
 | Resilience4j | MicroProfile Fault Tolerance (`@Timeout`, `@Retry`, `@CircuitBreaker`, `@Fallback`) | `AmadeusStyleFlightOffersProvider` |
 | `TransactionTemplate` (`REQUIRES_NEW`) | `QuarkusTransaction.requiringNew().call(...)` | `BookingTransactions` |
 | `spring.flyway.*` + `ddl-auto=validate` | `quarkus.flyway.migrate-at-start` + `schema-management.strategy=validate` | `application.properties` |
-| Testcontainers + `@ServiceConnection` | **Dev Services**: PostgreSQL y WireMock arrancan solos en dev y test, sin configuración | todas las `@QuarkusTest` |
-| `@SpringBootTest` | `@QuarkusTest` (una sola app para todas las clases de prueba) | `BookingFlowTest` |
+| Testcontainers + `@ServiceConnection` | **Dev Services**: PostgreSQL and WireMock start on their own in dev and test, with no configuration | every `@QuarkusTest` |
+| `@SpringBootTest` | `@QuarkusTest` (one app shared by all test classes) | `BookingFlowTest` |
 | `@MockitoBean` | `@InjectMock` | `TicketingSagaCompensationTest` |
-| springdoc | SmallRye OpenAPI, sirviendo aquí el contrato estático tal cual | `/openapi`, `/swagger-ui` |
+| springdoc | SmallRye OpenAPI, here serving the static contract as is | `/openapi`, `/swagger-ui` |
 | Actuator | SmallRye Health (`/q/health/live`, `/ready`, `/started`) + Micrometer (`/q/metrics`) | |
-| `spring.threads.virtual.enabled` | `@RunOnVirtualThread` por endpoint | `OffersResource` |
+| `spring.threads.virtual.enabled` | `@RunOnVirtualThread` per endpoint | `OffersResource` |
 | Spring Native / AOT `RuntimeHints` | `@RegisterForReflection` | `RestNativeReflectionConfig` |
 
-### Lo que más cambia la forma de pensar
+### What changes the way you think the most
 
-1. **La inyección se resuelve al compilar** (ArC). Los errores de cableado (bean ambiguo o
-   inexistente) aparecen en el build, no al arrancar. La contrapartida: hay menos magia en
-   runtime, y cosas como `@ConditionalOnProperty` se convierten en una decisión explícita
-   entre build time y runtime.
-2. **Los beans normal-scoped se inyectan a través de un *client proxy***. Para comprobar el
-   tipo real en una prueba hay que hacer `ClientProxy.unwrap(...)`. Es el equivalente a los
-   proxies CGLIB de Spring, pero siempre presente.
-3. **Dev Services cambia el ciclo de desarrollo.** `./mvnw quarkus:dev` con Docker levanta la
-   base de datos y los mocks de terceros. No hay `docker-compose` de desarrollo ni H2, y las
-   pruebas corren contra el PostgreSQL real.
-4. **Un solo archivo de configuración con perfiles** es más fácil de auditar que varios YAML.
-   Las variables de entorno sobrescriben cualquier clave
-   (`QUARKUS_LOG_CONSOLE_JSON_LOG_FORMAT=gcp`).
-5. **Imperativo en hilos virtuales o reactivo con Mutiny.** Quarkus permite las dos cosas en
-   el mismo proyecto:
-   - para flujos secuenciales de I/O bastan los hilos virtuales, con código igual que en
-     Spring MVC;
-   - Mutiny compensa al componer I/O en paralelo, hacer streaming o cuando toda la cadena ya
-     es reactiva.
+1. **Injection is resolved at build time** (ArC). Wiring errors (ambiguous or missing bean)
+   show up in the build, not at startup. The trade-off: there is less runtime magic, and
+   things like `@ConditionalOnProperty` become an explicit choice between build time and
+   runtime.
+2. **Normal-scoped beans are injected through a *client proxy***. To check the real type in a
+   test you need `ClientProxy.unwrap(...)`. It is the equivalent of Spring's CGLIB proxies,
+   but always present.
+3. **Dev Services changes the development loop.** `./mvnw quarkus:dev` with Docker brings up the
+   database and the third-party mocks. There is no development `docker-compose` and no H2, and
+   the tests run against real PostgreSQL.
+4. **A single configuration file with profiles** is easier to audit than several YAML files.
+   Environment variables override any key (`QUARKUS_LOG_CONSOLE_JSON_LOG_FORMAT=gcp`).
+5. **Imperative on virtual threads or reactive with Mutiny.** Quarkus allows both in the same
+   project:
+   - for sequential I/O flows, virtual threads are enough, with code just like Spring MVC;
+   - Mutiny pays off when composing parallel I/O, streaming, or when the whole chain is
+     already reactive.
 
-   Cuidado con `synchronized` alrededor de I/O en Java 21: ancla el hilo virtual. Aquí se usa
-   `ReentrantLock`.
-6. **El nativo exige pensar en reflexión.** El fallo más sutil del proyecto solo ocurría en el
-   ejecutable nativo: los recursos devuelven `Response`, Quarkus no sabía qué DTO se
-   serializaban y Jackson perdía campos (`code`, `detail`, `fare`…). La solución fue anotar
-   los DTO generados y añadir una prueba JVM que lo detecta en milisegundos. A cambio, el
-   nativo arranca en **0,2 s** con unos **40 MiB**.
-7. **`QuarkusTransaction` hace evidentes las transacciones programáticas.** En la saga, cada
-   paso es una transacción corta y las llamadas a terceros quedan fuera, algo que en Spring
-   suele esconderse detrás de `@Transactional` en el método equivocado.
-8. **Los mappers de excepciones con tipos sellados de Java 21** (`switch` exhaustivo) dan una
-   tabla de errores HTTP que el compilador mantiene al día.
-9. **Fault Tolerance es configurable sin recompilar**
-   (`quarkus.fault-tolerance."<clase>/<método>".*`), y el circuit breaker con nombre se
-   inspecciona y resetea con `CircuitBreakerMaintenance`, muy útil en pruebas.
-10. **Pequeñas trampas:**
-    - JAX-RS responde **404** si no puede convertir un `@QueryParam` (un enum inválido): hubo
-      que mapearlo a 400;
-    - en distroless (sin locale) hace falta `-Dstdout.encoding=UTF-8` para que los logs no
-      muestren «rechaz?»;
-    - `mvnw` sin `unzip` descarga el `.tar.gz` y su checksum (el del `.zip`) falla;
-    - el Mandrel por defecto de Quarkus 3.40 es JDK 25, aunque el proyecto sea Java 21.
+   Watch out for `synchronized` around I/O in Java 21: it pins the virtual thread. This
+   project uses `ReentrantLock` instead.
+6. **Native requires thinking about reflection.** The subtlest bug in the project only
+   happened in the native executable: the resources return `Response`, Quarkus did not know
+   which DTOs were being serialized, and Jackson dropped fields (`code`, `detail`, `fare`…).
+   The fix was to annotate the generated DTOs and add a JVM test that catches it in
+   milliseconds. In return, the native build starts in **0.2 s** with about **40 MiB**.
+7. **`QuarkusTransaction` makes programmatic transactions obvious.** In the saga, each step is
+   a short transaction and third-party calls stay outside it, something that in Spring often
+   hides behind `@Transactional` on the wrong method.
+8. **Exception mappers with Java 21 sealed types** (exhaustive `switch`) give an HTTP error
+   table that the compiler keeps up to date.
+9. **Fault Tolerance can be configured without rebuilding**
+   (`quarkus.fault-tolerance."<class>/<method>".*`), and a named circuit breaker can be
+   inspected and reset with `CircuitBreakerMaintenance`, which is very handy in tests.
+10. **Small gotchas:**
+    - JAX-RS answers **404** when it cannot convert a `@QueryParam` (an invalid enum): it had
+      to be mapped to 400;
+    - in distroless (no locale) you need `-Dstdout.encoding=UTF-8` so logs don't show
+      "rechaz?";
+    - `mvnw` without `unzip` downloads the `.tar.gz`, and its checksum (the `.zip` one) fails;
+    - the default Mandrel for Quarkus 3.40 is JDK 25, even though the project is Java 21.
 
-## Estado y pendientes
+## Status and to-dos
 
-Verificado en el entorno de desarrollo:
+Verified:
 
-- todas las pruebas;
-- docker compose + e2e (JVM y nativo);
-- Terraform `validate`/`test`, tflint y Trivy;
-- actionlint y hadolint.
+- all the tests, locally and on GitHub Actions;
+- docker compose + e2e (JVM and native);
+- Terraform `validate`/`test`, tflint and Trivy;
+- actionlint and hadolint;
+- a real deployment on GCP: bootstrap, `terraform apply` from `infra.yml`, image publishing,
+  Cloud Run deployment with smoke test from `ci.yml`, and a full `terraform destroy`.
 
-No verificado: `apply` real en GCP, ejecución en GitHub Actions y build con Mandrel (registro
-bloqueado en ese entorno).
+Not verified: the native image build in the pipeline (`backend_variant: native`, Mandrel
+builder).
 
-Pendiente:
+To do:
 
-- trazas a Cloud Trace y Managed Prometheus;
-- dominio propio con balanceador y Cloud Armor;
-- activar OIDC con un IdP;
-- i18n y modo oscuro en el frontend;
-- limpieza programada de ofertas y claves de idempotencia caducadas.
+- traces to Cloud Trace and Managed Prometheus;
+- custom domain with a load balancer and Cloud Armor;
+- enable OIDC with an IdP;
+- i18n and dark mode in the frontend;
+- scheduled cleanup of expired offers and idempotency keys.
